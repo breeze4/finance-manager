@@ -30,10 +30,14 @@ from typing import Protocol
 
 from sqlalchemy.orm import Session
 
-from app.models import Account, Category, ImportLog, Transaction
+from app.models import Account, Category, ClassificationRule, ImportLog, Transaction
 from app.parsers.base import BaseParser, RawTransaction
 from app.parsers.registry import detect_parser
-from app.services.classification_service import find_matching_rule
+from app.services.classification_service import (
+    apply_rule,
+    auto_create_rule,
+    find_matching_rule,
+)
 from app.services.payment_service import detect_payments
 
 logger = logging.getLogger(__name__)
@@ -58,6 +62,14 @@ class IngestReport:
 
 class TransactionIngestion(Protocol):
     def ingest(self, source: Path) -> IngestReport: ...
+
+    def reclassify_vendor(
+        self,
+        vendor: str,
+        category_id: int,
+        *,
+        vendor_display_name: str | None = None,
+    ) -> ClassificationRule: ...
 
 
 def _file_hash(filepath: Path) -> str:
@@ -150,6 +162,31 @@ class IngestionService:
             matches_found=detection.matches_found,
             total_matches=detection.total_matches,
         )
+
+    def reclassify_vendor(
+        self,
+        vendor: str,
+        category_id: int,
+        *,
+        vendor_display_name: str | None = None,
+    ) -> ClassificationRule:
+        """Create or update an exact-match rule for the vendor and propagate.
+
+        Composes ``classification_service.auto_create_rule`` and
+        ``classification_service.apply_rule``: the former creates or updates
+        the rule, the latter propagates the new ``category_id`` to all
+        unverified transactions whose vendor matches the rule's pattern.
+        Flushes; the caller commits. Does not modify ``is_verified``.
+        """
+        rule = auto_create_rule(
+            self._db,
+            vendor,
+            category_id,
+            vendor_display_name=vendor_display_name,
+        )
+        apply_rule(self._db, rule)
+        self._db.flush()
+        return rule
 
     def _ingest_directory(self, input_dir: Path) -> list[FileOutcome]:
         outcomes: list[FileOutcome] = []
