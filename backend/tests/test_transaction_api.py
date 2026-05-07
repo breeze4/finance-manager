@@ -3,7 +3,7 @@ from datetime import date
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models import Category, Transaction
+from app.models import Category, ClassificationRule, Transaction
 
 
 def _make_txn(db: Session, **overrides) -> Transaction:
@@ -190,6 +190,74 @@ class TestUpdateTransaction:
         resp = client.patch(f"/api/transactions/{txn.id}", json={})
         assert resp.status_code == 400
 
+    def test_patch_creates_classification_rule(
+        self, client: TestClient, db: Session, seed_categories
+    ):
+        txn = _make_txn(db, vendor="Acme", import_hash="rule1")
+        gid = seed_categories["Groceries"]
+        resp = client.patch(f"/api/transactions/{txn.id}", json={"category_id": gid})
+        assert resp.status_code == 200
+
+        rules = (
+            db.query(ClassificationRule).filter(ClassificationRule.vendor_pattern == "Acme").all()
+        )
+        assert len(rules) == 1
+        assert rules[0].match_type == "exact"
+        assert rules[0].category_id == gid
+
+    def test_patch_propagates_to_unverified_siblings(
+        self, client: TestClient, db: Session, seed_categories
+    ):
+        gid = seed_categories["Groceries"]
+        t1 = _make_txn(db, vendor="Acme", is_verified=False, import_hash="prop1")
+        t2 = _make_txn(db, vendor="Acme", is_verified=False, import_hash="prop2")
+
+        resp = client.patch(f"/api/transactions/{t1.id}", json={"category_id": gid})
+        assert resp.status_code == 200
+
+        db.refresh(t2)
+        assert t2.category_id == gid
+
+    def test_patch_does_not_touch_verified_siblings(
+        self, client: TestClient, db: Session, seed_categories
+    ):
+        gid = seed_categories["Groceries"]
+        did = seed_categories["Dining"]
+        t1 = _make_txn(db, vendor="Acme", is_verified=False, import_hash="vk1")
+        t2 = _make_txn(
+            db,
+            vendor="Acme",
+            category_id=did,
+            is_verified=True,
+            import_hash="vk2",
+        )
+
+        resp = client.patch(f"/api/transactions/{t1.id}", json={"category_id": gid})
+        assert resp.status_code == 200
+
+        db.refresh(t2)
+        assert t2.category_id == did
+
+    def test_patch_updates_existing_rule_instead_of_duplicating(
+        self, client: TestClient, db: Session, seed_categories
+    ):
+        gid = seed_categories["Groceries"]
+        did = seed_categories["Dining"]
+        txn = _make_txn(db, vendor="Acme", import_hash="dup1")
+
+        r1 = client.patch(f"/api/transactions/{txn.id}", json={"category_id": gid})
+        assert r1.status_code == 200
+        r2 = client.patch(f"/api/transactions/{txn.id}", json={"category_id": did})
+        assert r2.status_code == 200
+
+        rules = (
+            db.query(ClassificationRule)
+            .filter(ClassificationRule.vendor_pattern.ilike("Acme"))
+            .all()
+        )
+        assert len(rules) == 1
+        assert rules[0].category_id == did
+
 
 class TestBulkUpdate:
     def test_bulk_update_category(self, client: TestClient, db: Session, seed_categories):
@@ -214,6 +282,40 @@ class TestBulkUpdate:
             json={"ids": [], "category_id": 1},
         )
         assert resp.status_code == 400
+
+    def test_bulk_update_creates_one_rule_per_unique_vendor(
+        self, client: TestClient, db: Session, seed_categories
+    ):
+        gid = seed_categories["Groceries"]
+        a1 = _make_txn(db, vendor="Acme", import_hash="ba1")
+        a2 = _make_txn(db, vendor="Acme", import_hash="ba2")
+        a3 = _make_txn(db, vendor="ACME", import_hash="ba3")  # case variant
+        b1 = _make_txn(db, vendor="Beta", import_hash="bb1")
+        b2 = _make_txn(db, vendor="Beta", import_hash="bb2")
+
+        ids = [a1.id, a2.id, a3.id, b1.id, b2.id]
+        resp = client.post(
+            "/api/transactions/bulk-update",
+            json={"ids": ids, "category_id": gid},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["updated"] == 5
+
+        # Exactly two rules — one per unique vendor (case-insensitively)
+        rules = db.query(ClassificationRule).all()
+        assert len(rules) == 2
+        patterns = {r.vendor_pattern.lower() for r in rules}
+        assert patterns == {"acme", "beta"}
+        for r in rules:
+            assert r.match_type == "exact"
+            assert r.category_id == gid
+
+        # All five marked verified
+        for tid in ids:
+            db_txn = db.query(Transaction).filter(Transaction.id == tid).one()
+            db.refresh(db_txn)
+            assert db_txn.is_verified is True
+            assert db_txn.category_id == gid
 
 
 class TestCategoryAPI:

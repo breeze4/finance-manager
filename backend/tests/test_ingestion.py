@@ -1,5 +1,6 @@
 import csv
 import tempfile
+from datetime import date
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -271,6 +272,117 @@ class TestIngestDirectory:
         assert by_name["weird.csv"].rows_imported == 0
         assert by_name["weird.csv"].error == "Unknown format"
         assert report.rows_imported == 3
+
+
+def _make_txn(
+    db: Session,
+    *,
+    vendor: str,
+    category_id: int | None = None,
+    is_verified: bool = False,
+    import_hash: str | None = None,
+) -> Transaction:
+    """Build a transaction directly for boundary tests."""
+    from tests.conftest import get_or_create_account
+
+    account = get_or_create_account(db, "Chase CC", type="credit_card", institution="Chase")
+    txn = Transaction(
+        source_file="test.csv",
+        account_id=account.id,
+        date=date(2025, 6, 15),
+        raw_description=vendor.upper(),
+        vendor=vendor,
+        amount=-50.0,
+        category_id=category_id,
+        is_verified=is_verified,
+        is_transfer=False,
+        import_hash=import_hash or f"hash_{vendor}_{is_verified}_{id(object())}",
+    )
+    db.add(txn)
+    db.commit()
+    db.refresh(txn)
+    return txn
+
+
+class TestReclassifyVendor:
+    def test_creates_new_exact_rule(self, db: Session):
+        cat_map = _seed_categories(db)
+        ingestion = build_ingestion(db)
+
+        rule = ingestion.reclassify_vendor("Acme", cat_map["Groceries"])
+        db.commit()
+
+        rules = db.query(ClassificationRule).all()
+        assert len(rules) == 1
+        assert rules[0].vendor_pattern == "Acme"
+        assert rules[0].match_type == "exact"
+        assert rules[0].category_id == cat_map["Groceries"]
+        assert rule.id == rules[0].id
+
+    def test_updates_existing_rule_does_not_duplicate(self, db: Session):
+        cat_map = _seed_categories(db)
+        # Pre-seed an exact-match rule for "Acme"
+        existing = ClassificationRule(
+            vendor_pattern="Acme",
+            match_type="exact",
+            category_id=cat_map["Groceries"],
+        )
+        db.add(existing)
+        db.commit()
+
+        ingestion = build_ingestion(db)
+        ingestion.reclassify_vendor("Acme", cat_map["Dining"])
+        db.commit()
+
+        rules = db.query(ClassificationRule).all()
+        assert len(rules) == 1
+        assert rules[0].vendor_pattern == "Acme"
+        assert rules[0].category_id == cat_map["Dining"]
+
+    def test_propagates_to_unverified_siblings(self, db: Session):
+        cat_map = _seed_categories(db)
+        t1 = _make_txn(db, vendor="Acme", is_verified=False, import_hash="rv_p1")
+        t2 = _make_txn(db, vendor="Acme", is_verified=False, import_hash="rv_p2")
+
+        ingestion = build_ingestion(db)
+        ingestion.reclassify_vendor("Acme", cat_map["Groceries"])
+        db.commit()
+
+        db.refresh(t1)
+        db.refresh(t2)
+        assert t1.category_id == cat_map["Groceries"]
+        assert t2.category_id == cat_map["Groceries"]
+
+    def test_does_not_touch_verified_transactions(self, db: Session):
+        cat_map = _seed_categories(db)
+        verified = _make_txn(
+            db,
+            vendor="Acme",
+            category_id=cat_map["Dining"],
+            is_verified=True,
+            import_hash="rv_v1",
+        )
+
+        ingestion = build_ingestion(db)
+        ingestion.reclassify_vendor("Acme", cat_map["Groceries"])
+        db.commit()
+
+        db.refresh(verified)
+        assert verified.category_id == cat_map["Dining"]
+
+    def test_does_not_modify_is_verified_flag(self, db: Session):
+        cat_map = _seed_categories(db)
+        t1 = _make_txn(db, vendor="Acme", is_verified=False, import_hash="rv_f1")
+        t2 = _make_txn(db, vendor="Acme", is_verified=False, import_hash="rv_f2")
+
+        ingestion = build_ingestion(db)
+        ingestion.reclassify_vendor("Acme", cat_map["Groceries"])
+        db.commit()
+
+        db.refresh(t1)
+        db.refresh(t2)
+        assert t1.is_verified is False
+        assert t2.is_verified is False
 
 
 class TestIngestWithRealData:

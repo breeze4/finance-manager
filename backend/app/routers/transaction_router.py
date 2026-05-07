@@ -11,7 +11,8 @@ from app.schemas.transaction import (
     TransactionResponse,
     TransactionUpdate,
 )
-from app.services import classification_service, transaction_service
+from app.services import transaction_service
+from app.services.ingestion import build_ingestion
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 
@@ -120,7 +121,7 @@ def update_transaction(
 
     # Auto-create classification rule when category changes
     if body.category_id is not None:
-        classification_service.auto_create_rule(db, txn.vendor, body.category_id)
+        build_ingestion(db).reclassify_vendor(txn.vendor, body.category_id)
         db.commit()
 
     return _txn_to_response(txn)
@@ -147,12 +148,16 @@ def bulk_update_transactions(body: BulkUpdateRequest, db: Session = Depends(get_
     # Auto-create rules per vendor when category is set via bulk update
     if body.category_id is not None:
         txns = db.query(Transaction).filter(Transaction.id.in_(body.ids)).all()
-        seen_vendors: set[str] = set()
+        seen_lower: set[str] = set()
+        unique_vendors: list[str] = []
         for txn in txns:
-            vendor_lower = txn.vendor.lower()
-            if vendor_lower not in seen_vendors:
-                seen_vendors.add(vendor_lower)
-                classification_service.auto_create_rule(db, txn.vendor, body.category_id)
+            key = txn.vendor.lower()
+            if key not in seen_lower:
+                seen_lower.add(key)
+                unique_vendors.append(txn.vendor)
+        ingestion = build_ingestion(db)
+        for vendor in unique_vendors:
+            ingestion.reclassify_vendor(vendor, body.category_id)
         # Also mark all as verified
         db.query(Transaction).filter(Transaction.id.in_(body.ids)).update(
             {"is_verified": True}, synchronize_session="fetch"
