@@ -81,6 +81,9 @@ class BecuCheckingParser(BaseParser):
     def can_parse(self, headers: list[str]) -> bool:
         return headers[:5] == EXPECTED_HEADERS
 
+    def account_default(self) -> tuple[str, str | None]:
+        return ("checking", "BECU")
+
     def parse(self, filepath: Path) -> list[RawTransaction]:
         transactions: list[RawTransaction] = []
         filename = filepath.name
