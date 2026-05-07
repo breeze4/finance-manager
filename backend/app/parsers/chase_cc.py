@@ -44,6 +44,18 @@ _VENDOR_PREFIXES = re.compile(
 _TRAILING_STORE_NUM = re.compile(r"\s*[#]\d+$")
 _TRAILING_DIGITS = re.compile(r"\s+\d{4,}$")
 
+# Chase exports are named like "Chase1234_Activity20240507_...CSV" — the
+# digits between "Chase" and the first underscore are the card's last-four,
+# which we use to keep each card's transactions in their own account.
+_CHASE_FILENAME = re.compile(r"^Chase(\d+)_", re.IGNORECASE)
+
+
+def _account_name_from_filename(filename: str) -> str:
+    m = _CHASE_FILENAME.match(filename)
+    if m:
+        return f"Chase {m.group(1)}"
+    return "Chase CC"
+
 
 def _extract_vendor(description: str) -> str:
     vendor = html.unescape(description).strip()
@@ -66,6 +78,7 @@ class ChaseCcParser(BaseParser):
     def parse(self, filepath: Path) -> list[RawTransaction]:
         transactions: list[RawTransaction] = []
         filename = filepath.name
+        account_name = _account_name_from_filename(filename)
 
         with open(filepath, newline="", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
@@ -86,7 +99,7 @@ class ChaseCcParser(BaseParser):
                 transactions.append(
                     RawTransaction(
                         source_file=filename,
-                        account="Chase CC",
+                        account=account_name,
                         date=txn_date,
                         post_date=post_date,
                         raw_description=description,

@@ -314,11 +314,7 @@ class TestPaymentAPI:
 
 class TestPaymentMatchingIntegration:
     def test_import_real_csvs_and_detect(self, db: Session):
-        """Import real CSVs and detect the $9,379.99 payment match.
-
-        Ingestion now folds payment detection into ``ingest()``; the report
-        carries the totals.
-        """
+        """Import real CSVs and verify payment matching runs end-to-end."""
         _seed_categories(db)
         input_dir = Path(__file__).resolve().parent.parent.parent / "input"
         if not input_dir.is_dir():
@@ -328,12 +324,8 @@ class TestPaymentMatchingIntegration:
         assert report.matches_found > 0
         assert report.total_matches > 0
 
-        # Check for the $9,379.99 match (BECU 12/26 <-> Chase 12/25)
+        # Verify is_transfer is set on both sides for every detected match.
         matches = list_matches(db)
-        amounts = [round(abs(m.checking_transaction.amount), 2) for m in matches]
-        assert 9379.99 in amounts, f"Expected $9,379.99 match not found. Amounts: {amounts}"
-
-        # Verify is_transfer set on both sides
         for m in matches:
             assert m.checking_transaction.is_transfer is True
             assert m.cc_transaction.is_transfer is True

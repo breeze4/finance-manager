@@ -5,7 +5,7 @@ from pathlib import Path
 
 from app.parsers.base import BaseParser, RawTransaction
 from app.parsers.becu_checking import BecuCheckingParser, _extract_vendor_and_type
-from app.parsers.chase_cc import ChaseCcParser, _extract_vendor
+from app.parsers.chase_cc import ChaseCcParser, _account_name_from_filename, _extract_vendor
 from app.parsers.registry import detect_parser
 
 
@@ -146,16 +146,25 @@ class TestChaseCcParser:
         parser = ChaseCcParser()
         assert parser.account_default() == ("credit_card", "Chase")
 
+    def test_account_name_from_filename(self):
+        assert _account_name_from_filename("Chase1234_Activity.CSV") == "Chase 1234"
+        assert _account_name_from_filename("Chase5678_Activity.CSV") == "Chase 5678"
+        # Fallback for files that don't match the Chase export naming.
+        assert _account_name_from_filename("anything.csv") == "Chase CC"
+        assert _account_name_from_filename("tmp123.CSV") == "Chase CC"
+
     def test_parse_real_chase_file(self):
         filepath = Path(__file__).resolve().parent.parent.parent / "input"
         chase_files = list(filepath.glob("Chase*.CSV"))
         if not chase_files:
             return  # Skip if no sample data
         parser = ChaseCcParser()
-        txns = parser.parse(chase_files[0])
+        sample = chase_files[0]
+        expected_account = _account_name_from_filename(sample.name)
+        txns = parser.parse(sample)
         assert len(txns) > 0
         for t in txns:
-            assert t.account == "Chase CC"
+            assert t.account == expected_account
             assert t.import_hash
             assert t.date is not None
             assert t.amount != 0
