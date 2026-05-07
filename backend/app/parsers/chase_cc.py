@@ -103,8 +103,10 @@ class ChaseCcParser(BaseParser):
 
         return transactions
 
-    @staticmethod
-    def map_category(source_category: str | None) -> str:
+    def account_default(self) -> tuple[str, str | None]:
+        return ("credit_card", "Chase")
+
+    def map_source_category(self, source_category: str | None) -> str | None:
         if not source_category:
             return "Uncategorized"
         return CHASE_CATEGORY_MAP.get(source_category, "Uncategorized")

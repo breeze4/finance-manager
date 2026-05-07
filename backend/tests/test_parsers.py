@@ -3,6 +3,7 @@ import tempfile
 from datetime import date
 from pathlib import Path
 
+from app.parsers.base import BaseParser, RawTransaction
 from app.parsers.becu_checking import BecuCheckingParser, _extract_vendor_and_type
 from app.parsers.chase_cc import ChaseCcParser, _extract_vendor
 from app.parsers.registry import detect_parser
@@ -16,6 +17,32 @@ def _write_csv(rows: list[list[str]], suffix: str = ".csv") -> Path:
         writer.writerow(row)
     f.close()
     return Path(f.name)
+
+
+# -- BaseParser Defaults --
+
+
+class TestBaseParserDefaults:
+    def test_default_account_default(self):
+        class _StubParser(BaseParser):
+            def can_parse(self, headers: list[str]) -> bool:
+                return False
+
+            def parse(self, filepath: Path) -> list[RawTransaction]:
+                return []
+
+        assert _StubParser().account_default() == ("asset", None)
+
+    def test_default_map_source_category(self):
+        class _StubParser(BaseParser):
+            def can_parse(self, headers: list[str]) -> bool:
+                return False
+
+            def parse(self, filepath: Path) -> list[RawTransaction]:
+                return []
+
+        assert _StubParser().map_source_category("anything") is None
+        assert _StubParser().map_source_category(None) is None
 
 
 # -- Chase CC Parser Tests --
@@ -107,13 +134,17 @@ class TestChaseCcParser:
         txns2 = parser.parse(filepath)
         assert txns1[0].import_hash == txns2[0].import_hash
 
-    def test_category_map(self):
+    def test_map_source_category(self):
         parser = ChaseCcParser()
-        assert parser.map_category("Food & Drink") == "Dining"
-        assert parser.map_category("Groceries") == "Groceries"
-        assert parser.map_category("Professional Services") == "Uncategorized"
-        assert parser.map_category(None) == "Uncategorized"
-        assert parser.map_category("SomeNewCategory") == "Uncategorized"
+        assert parser.map_source_category("Food & Drink") == "Dining"
+        assert parser.map_source_category("Groceries") == "Groceries"
+        assert parser.map_source_category("Professional Services") == "Uncategorized"
+        assert parser.map_source_category(None) == "Uncategorized"
+        assert parser.map_source_category("SomeNewCategory") == "Uncategorized"
+
+    def test_account_default(self):
+        parser = ChaseCcParser()
+        assert parser.account_default() == ("credit_card", "Chase")
 
     def test_parse_real_chase_file(self):
         filepath = Path(__file__).resolve().parent.parent.parent / "input"
@@ -232,6 +263,15 @@ class TestBecuCheckingParser:
         txns1 = parser.parse(filepath)
         txns2 = parser.parse(filepath)
         assert txns1[0].import_hash == txns2[0].import_hash
+
+    def test_account_default(self):
+        parser = BecuCheckingParser()
+        assert parser.account_default() == ("checking", "BECU")
+
+    def test_map_source_category_returns_none(self):
+        parser = BecuCheckingParser()
+        assert parser.map_source_category("anything") is None
+        assert parser.map_source_category(None) is None
 
     def test_parse_real_becu_file(self):
         filepath = Path(__file__).resolve().parent.parent.parent / "input"

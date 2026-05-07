@@ -27,3 +27,11 @@ class BaseParser(ABC):
     @abstractmethod
     def parse(self, filepath: Path) -> list[RawTransaction]:
         """Parse the CSV file into a list of RawTransactions."""
+
+    def account_default(self) -> tuple[str, str | None]:
+        """Return (account_type, institution) for auto-creating an Account."""
+        return ("asset", None)
+
+    def map_source_category(self, source_category: str | None) -> str | None:
+        """Map the parser's source category string to a canonical category name."""
+        return None

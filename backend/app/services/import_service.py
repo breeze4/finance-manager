@@ -6,20 +6,11 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.models import Account, Category, ImportLog, Transaction
-from app.parsers.base import RawTransaction
-from app.parsers.chase_cc import ChaseCcParser
+from app.parsers.base import BaseParser, RawTransaction
 from app.parsers.registry import detect_parser
 from app.services.classification_service import find_matching_rule
 
 logger = logging.getLogger(__name__)
-
-
-# Maps parser class names to (account type, institution) for auto-creating
-# Account rows when an import sees an account string with no matching row.
-_PARSER_ACCOUNT_DEFAULTS: dict[str, tuple[str, str]] = {
-    "ChaseCcParser": ("credit_card", "Chase"),
-    "BecuCheckingParser": ("checking", "BECU"),
-}
 
 
 @dataclass
@@ -41,7 +32,7 @@ def _file_hash(filepath: Path) -> str:
 def _resolve_account_id(
     db: Session,
     account_name: str,
-    parser: object,
+    parser: BaseParser,
     account_cache: dict[str, int],
 ) -> int:
     """Resolve account_id by name; auto-create with parser-derived defaults."""
@@ -51,7 +42,7 @@ def _resolve_account_id(
     account = db.query(Account).filter(Account.name == account_name).first()
     if account is None:
         parser_cls = parser.__class__.__name__
-        acct_type, institution = _PARSER_ACCOUNT_DEFAULTS.get(parser_cls, ("asset", None))
+        acct_type, institution = parser.account_default()
         logger.warning(
             "Auto-creating account row name=%r type=%r institution=%r (parser=%s)",
             account_name,
@@ -75,7 +66,7 @@ def _resolve_account_id(
 def _resolve_category_id(
     db: Session,
     raw: RawTransaction,
-    parser: object,
+    parser: BaseParser,
     category_cache: dict[str, int | None],
 ) -> int | None:
     """Resolve category_id: first try classification rules, then parser's category map."""
@@ -85,8 +76,10 @@ def _resolve_category_id(
         return rule.category_id
 
     # Fall back to parser's source category mapping
-    if isinstance(parser, ChaseCcParser) and raw.source_category:
-        canonical_name = parser.map_category(raw.source_category)
+    if raw.source_category:
+        canonical_name = parser.map_source_category(raw.source_category)
+        if canonical_name is None:
+            return None
         if canonical_name not in category_cache:
             cat = db.query(Category).filter(Category.name == canonical_name).first()
             category_cache[canonical_name] = cat.id if cat else None
