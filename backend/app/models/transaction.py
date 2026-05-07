@@ -11,7 +11,7 @@ class Transaction(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     source_file: Mapped[str] = mapped_column(String, nullable=False)
-    account: Mapped[str] = mapped_column(String, nullable=False)
+    account_id: Mapped[int] = mapped_column(Integer, ForeignKey("accounts.id"), nullable=False)
     date: Mapped[date] = mapped_column(Date, nullable=False)
     post_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     raw_description: Mapped[str] = mapped_column(String, nullable=False)
@@ -33,12 +33,13 @@ class Transaction(Base):
     )
 
     category: Mapped["Category | None"] = relationship(back_populates="transactions")  # noqa: F821
+    account: Mapped["Account"] = relationship(back_populates="transactions")  # noqa: F821
 
     __table_args__ = (
         Index("ix_transactions_date", "date"),
         Index("ix_transactions_vendor", "vendor"),
         Index("ix_transactions_category_id", "category_id"),
-        Index("ix_transactions_account", "account"),
+        Index("ix_transactions_account_id", "account_id"),
         Index("ix_transactions_import_hash", "import_hash"),
         Index("ix_transactions_is_transfer", "is_transfer"),
     )

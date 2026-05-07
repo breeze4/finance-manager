@@ -4,16 +4,29 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models import Category, Subscription, Transaction
+from app.models import Category, Transaction
 from app.services.import_service import import_all
 from app.services.subscription_service import detect_subscriptions, list_subscriptions
 
 
 def _seed_categories(db: Session) -> dict[str, int]:
     names = [
-        "Shopping", "Groceries", "Dining", "Health & Wellness", "Entertainment",
-        "Bills & Utilities", "Travel", "Gas", "Education", "Personal", "Home",
-        "Gifts & Donations", "Income", "Investments", "Transfers", "Uncategorized",
+        "Shopping",
+        "Groceries",
+        "Dining",
+        "Health & Wellness",
+        "Entertainment",
+        "Bills & Utilities",
+        "Travel",
+        "Gas",
+        "Education",
+        "Personal",
+        "Home",
+        "Gifts & Donations",
+        "Income",
+        "Investments",
+        "Transfers",
+        "Uncategorized",
     ]
     for n in names:
         db.add(Category(name=n, is_system=True))
@@ -30,11 +43,14 @@ def _make_txn(
     category_id: int | None = None,
     import_hash: str | None = None,
 ) -> Transaction:
+    from tests.conftest import get_or_create_account
+
     if import_hash is None:
         import_hash = f"{vendor}_{amount}_{txn_date}"
+    account = get_or_create_account(db, "Chase CC", type="credit_card", institution="Chase")
     txn = Transaction(
         source_file="test.csv",
-        account="Chase CC",
+        account_id=account.id,
         date=txn_date,
         raw_description=vendor,
         vendor=vendor,
@@ -61,7 +77,11 @@ def _create_monthly_subscription(
     """Create monthly charges for a vendor."""
     txns = []
     for i in range(months):
-        d = date(start.year + (start.month + i - 1) // 12, (start.month + i - 1) % 12 + 1, start.day)
+        d = date(
+            start.year + (start.month + i - 1) // 12,
+            (start.month + i - 1) % 12 + 1,
+            start.day,
+        )
         txns.append(
             _make_txn(
                 db,
@@ -118,14 +138,25 @@ class TestDetectionAlgorithm:
 
     def test_variable_monthly_recurring(self, db: Session):
         """A vendor with varying amounts at monthly intervals should be variable."""
-        amounts = [-45.00, -52.00, -48.50, -55.20, -47.30, -50.10,
-                   -46.80, -53.40, -49.90, -51.60, -48.00, -54.30]
+        amounts = [
+            -45.00,
+            -52.00,
+            -48.50,
+            -55.20,
+            -47.30,
+            -50.10,
+            -46.80,
+            -53.40,
+            -49.90,
+            -51.60,
+            -48.00,
+            -54.30,
+        ]
         for i, amt in enumerate(amounts):
             d = date(2025, i + 1, 10)
-            _make_txn(db, vendor="Utility Co", amount=amt, txn_date=d,
-                      import_hash=f"utility_{i}")
+            _make_txn(db, vendor="Utility Co", amount=amt, txn_date=d, import_hash=f"utility_{i}")
 
-        result = detect_subscriptions(db)
+        detect_subscriptions(db)
         subs = list_subscriptions(db)
         utility = [s for s in subs if s.vendor == "Utility Co"]
         assert len(utility) == 1
@@ -139,7 +170,7 @@ class TestDetectionAlgorithm:
         """Weekly charges should be detected with weekly frequency."""
         _create_weekly_charges(db, "Gym", -10.00, date(2025, 1, 6), 20)
 
-        result = detect_subscriptions(db)
+        detect_subscriptions(db)
         subs = list_subscriptions(db)
         gym = [s for s in subs if s.vendor == "Gym"]
         assert len(gym) == 1
@@ -169,10 +200,12 @@ class TestDetectionAlgorithm:
 
     def test_too_few_transactions_not_detected(self, db: Session):
         """Vendors with fewer than 3 transactions should not be detected."""
-        _make_txn(db, vendor="OneOff", amount=-99.99, txn_date=date(2025, 1, 15),
-                  import_hash="oneoff_1")
-        _make_txn(db, vendor="OneOff", amount=-99.99, txn_date=date(2025, 2, 15),
-                  import_hash="oneoff_2")
+        _make_txn(
+            db, vendor="OneOff", amount=-99.99, txn_date=date(2025, 1, 15), import_hash="oneoff_1"
+        )
+        _make_txn(
+            db, vendor="OneOff", amount=-99.99, txn_date=date(2025, 2, 15), import_hash="oneoff_2"
+        )
 
         detect_subscriptions(db)
         subs = list_subscriptions(db)
@@ -180,11 +213,17 @@ class TestDetectionAlgorithm:
 
     def test_irregular_intervals_not_detected(self, db: Session):
         """Transactions with irregular spacing should not match any frequency."""
-        dates = [date(2025, 1, 1), date(2025, 1, 20), date(2025, 3, 5),
-                 date(2025, 3, 8), date(2025, 7, 15)]
+        dates = [
+            date(2025, 1, 1),
+            date(2025, 1, 20),
+            date(2025, 3, 5),
+            date(2025, 3, 8),
+            date(2025, 7, 15),
+        ]
         for i, d in enumerate(dates):
-            _make_txn(db, vendor="Random Store", amount=-25.00, txn_date=d,
-                      import_hash=f"random_{i}")
+            _make_txn(
+                db, vendor="Random Store", amount=-25.00, txn_date=d, import_hash=f"random_{i}"
+            )
 
         detect_subscriptions(db)
         subs = list_subscriptions(db)
@@ -192,11 +231,14 @@ class TestDetectionAlgorithm:
 
     def test_transfers_excluded(self, db: Session):
         """Transactions marked as transfers should not be considered."""
+        from tests.conftest import get_or_create_account
+
+        becu = get_or_create_account(db, "BECU Checking", type="checking", institution="BECU")
         for i in range(6):
             d = date(2025, i + 1, 15)
             txn = Transaction(
                 source_file="test.csv",
-                account="BECU Checking",
+                account_id=becu.id,
                 date=d,
                 raw_description="Transfer",
                 vendor="Internal Transfer",
@@ -215,8 +257,7 @@ class TestDetectionAlgorithm:
         """Inflow transactions (positive amounts) should not be detected as subscriptions."""
         for i in range(6):
             d = date(2025, i + 1, 1)
-            _make_txn(db, vendor="Employer", amount=5000.00, txn_date=d,
-                      import_hash=f"income_{i}")
+            _make_txn(db, vendor="Employer", amount=5000.00, txn_date=d, import_hash=f"income_{i}")
 
         detect_subscriptions(db)
         subs = list_subscriptions(db)
@@ -317,7 +358,7 @@ class TestSubscriptionAPI:
 class TestSubscriptionIntegration:
     def test_detect_from_real_csvs(self, db: Session):
         """Import real CSVs and verify known subscriptions are detected."""
-        cats = _seed_categories(db)
+        _seed_categories(db)
         input_dir = Path(__file__).resolve().parent.parent.parent / "input"
         if not input_dir.is_dir():
             return
@@ -361,7 +402,7 @@ class TestSubscriptionIntegration:
 
     def test_annual_estimates_reasonable(self, db: Session):
         """Annual estimates for known fixed subscriptions should be within 20% of actuals."""
-        cats = _seed_categories(db)
+        _seed_categories(db)
         input_dir = Path(__file__).resolve().parent.parent.parent / "input"
         if not input_dir.is_dir():
             return

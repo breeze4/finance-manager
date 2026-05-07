@@ -1,9 +1,7 @@
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import Category, Subscription, Transaction

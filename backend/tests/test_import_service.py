@@ -4,7 +4,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from app.models import Category, ClassificationRule, ImportLog, Transaction
+from app.models import Account, Category, ClassificationRule, ImportLog, Transaction
 from app.services.import_service import import_all, import_file
 
 
@@ -218,9 +218,16 @@ class TestImportWithRealData:
         assert total_imported > 1000  # We know there are ~1270 unique transactions
 
         # Verify Chase transactions have categories
+        chase_account = db.query(Account).filter(Account.name == "Chase CC").first()
+        becu_account = db.query(Account).filter(Account.name == "BECU Checking").first()
+        assert chase_account is not None
+        assert becu_account is not None
         chase_with_cat = (
             db.query(Transaction)
-            .filter(Transaction.account == "Chase CC", Transaction.category_id.isnot(None))
+            .filter(
+                Transaction.account_id == chase_account.id,
+                Transaction.category_id.isnot(None),
+            )
             .count()
         )
         assert chase_with_cat > 0
@@ -228,7 +235,10 @@ class TestImportWithRealData:
         # Verify BECU transactions have no categories
         becu_with_cat = (
             db.query(Transaction)
-            .filter(Transaction.account == "BECU Checking", Transaction.category_id.isnot(None))
+            .filter(
+                Transaction.account_id == becu_account.id,
+                Transaction.category_id.isnot(None),
+            )
             .count()
         )
         assert becu_with_cat == 0

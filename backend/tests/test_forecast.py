@@ -12,9 +12,22 @@ from app.services.import_service import import_all
 
 def _seed_categories(db: Session) -> dict[str, int]:
     names = [
-        "Shopping", "Groceries", "Dining", "Health & Wellness", "Entertainment",
-        "Bills & Utilities", "Travel", "Gas", "Education", "Personal", "Home",
-        "Gifts & Donations", "Income", "Investments", "Transfers", "Uncategorized",
+        "Shopping",
+        "Groceries",
+        "Dining",
+        "Health & Wellness",
+        "Entertainment",
+        "Bills & Utilities",
+        "Travel",
+        "Gas",
+        "Education",
+        "Personal",
+        "Home",
+        "Gifts & Donations",
+        "Income",
+        "Investments",
+        "Transfers",
+        "Uncategorized",
     ]
     for n in names:
         db.add(Category(name=n, is_system=True))
@@ -32,11 +45,14 @@ def _make_txn(
     is_transfer: bool = False,
     import_hash: str | None = None,
 ) -> Transaction:
+    from tests.conftest import get_or_create_account
+
     if import_hash is None:
         import_hash = f"{vendor}_{amount}_{txn_date}"
+    account = get_or_create_account(db, "Test")
     txn = Transaction(
         source_file="test.csv",
-        account="Test",
+        account_id=account.id,
         date=txn_date,
         raw_description=vendor,
         vendor=vendor,
@@ -63,6 +79,7 @@ class TestRegistry:
 
     def test_unknown_method_raises(self):
         import pytest
+
         with pytest.raises(ValueError, match="Unknown forecast method"):
             get_forecaster("nonexistent")
 
@@ -75,8 +92,14 @@ class TestSimpleForecaster:
 
         # Create data for 2025.
         for i in range(12):
-            _make_txn(db, vendor="Store", amount=-500, txn_date=date(2025, i + 1, 15),
-                      category_id=gid, import_hash=f"fs_{i}")
+            _make_txn(
+                db,
+                vendor="Store",
+                amount=-500,
+                txn_date=date(2025, i + 1, 15),
+                category_id=gid,
+                import_hash=f"fs_{i}",
+            )
 
         forecaster = get_forecaster("simple")
         result = forecaster.forecast(db, 2025)
@@ -94,10 +117,22 @@ class TestSimpleForecaster:
         cats = _seed_categories(db)
         gid = cats["Groceries"]
 
-        _make_txn(db, vendor="Store", amount=-500, txn_date=date(2025, 1, 15),
-                  category_id=gid, import_hash="past_1")
-        _make_txn(db, vendor="Store", amount=-300, txn_date=date(2025, 2, 15),
-                  category_id=gid, import_hash="past_2")
+        _make_txn(
+            db,
+            vendor="Store",
+            amount=-500,
+            txn_date=date(2025, 1, 15),
+            category_id=gid,
+            import_hash="past_1",
+        )
+        _make_txn(
+            db,
+            vendor="Store",
+            amount=-300,
+            txn_date=date(2025, 2, 15),
+            category_id=gid,
+            import_hash="past_2",
+        )
 
         forecaster = get_forecaster("simple")
         result = forecaster.forecast(db, 2025)
@@ -115,8 +150,14 @@ class TestSimpleForecaster:
         gid = cats["Groceries"]
 
         for i in range(12):
-            _make_txn(db, vendor="Store", amount=-500, txn_date=date(2025, i + 1, 15),
-                      category_id=gid, import_hash=f"fut_{i}")
+            _make_txn(
+                db,
+                vendor="Store",
+                amount=-500,
+                txn_date=date(2025, i + 1, 15),
+                category_id=gid,
+                import_hash=f"fut_{i}",
+            )
 
         forecaster = get_forecaster("simple")
         result = forecaster.forecast(db, 2027)
@@ -130,8 +171,14 @@ class TestSimpleForecaster:
         gid = cats["Groceries"]
 
         for i in range(12):
-            _make_txn(db, vendor="Store", amount=-500, txn_date=date(2025, i + 1, 15),
-                      category_id=gid, import_hash=f"nz_{i}")
+            _make_txn(
+                db,
+                vendor="Store",
+                amount=-500,
+                txn_date=date(2025, i + 1, 15),
+                category_id=gid,
+                import_hash=f"nz_{i}",
+            )
 
         forecaster = get_forecaster("simple")
         # Forecast a year where we have prior year data but no current year data.
@@ -147,8 +194,14 @@ class TestSimpleForecaster:
         gid = cats["Groceries"]
 
         for i in range(12):
-            _make_txn(db, vendor="Store", amount=-500, txn_date=date(2025, i + 1, 15),
-                      category_id=gid, import_hash=f"at_{i}")
+            _make_txn(
+                db,
+                vendor="Store",
+                amount=-500,
+                txn_date=date(2025, i + 1, 15),
+                category_id=gid,
+                import_hash=f"at_{i}",
+            )
 
         forecaster = get_forecaster("simple")
         result = forecaster.forecast(db, 2025)
@@ -193,10 +246,23 @@ class TestSimpleForecaster:
         gid = cats["Groceries"]
         tid = cats["Transfers"]
 
-        _make_txn(db, vendor="Store", amount=-500, txn_date=date(2025, 1, 15),
-                  category_id=gid, import_hash="te_1")
-        _make_txn(db, vendor="Transfer", amount=-1000, txn_date=date(2025, 1, 15),
-                  category_id=tid, is_transfer=True, import_hash="te_2")
+        _make_txn(
+            db,
+            vendor="Store",
+            amount=-500,
+            txn_date=date(2025, 1, 15),
+            category_id=gid,
+            import_hash="te_1",
+        )
+        _make_txn(
+            db,
+            vendor="Transfer",
+            amount=-1000,
+            txn_date=date(2025, 1, 15),
+            category_id=tid,
+            is_transfer=True,
+            import_hash="te_2",
+        )
 
         forecaster = get_forecaster("simple")
         result = forecaster.forecast(db, 2025)
@@ -216,8 +282,14 @@ class TestForecastAPI:
         gid = cats["Groceries"]
 
         for i in range(6):
-            _make_txn(db, vendor="Store", amount=-500, txn_date=date(2025, i + 1, 15),
-                      category_id=gid, import_hash=f"api_fc_{i}")
+            _make_txn(
+                db,
+                vendor="Store",
+                amount=-500,
+                txn_date=date(2025, i + 1, 15),
+                category_id=gid,
+                import_hash=f"api_fc_{i}",
+            )
 
         resp = client.get("/api/forecast/2025?method=simple")
         assert resp.status_code == 200
@@ -230,10 +302,22 @@ class TestForecastAPI:
         cats = _seed_categories(db)
         gid = cats["Groceries"]
 
-        _make_txn(db, vendor="Store", amount=-500, txn_date=date(2025, 1, 15),
-                  category_id=gid, import_hash="yoy_25")
-        _make_txn(db, vendor="Store", amount=-600, txn_date=date(2026, 1, 15),
-                  category_id=gid, import_hash="yoy_26")
+        _make_txn(
+            db,
+            vendor="Store",
+            amount=-500,
+            txn_date=date(2025, 1, 15),
+            category_id=gid,
+            import_hash="yoy_25",
+        )
+        _make_txn(
+            db,
+            vendor="Store",
+            amount=-600,
+            txn_date=date(2026, 1, 15),
+            category_id=gid,
+            import_hash="yoy_26",
+        )
 
         resp = client.get("/api/forecast/yoy")
         assert resp.status_code == 200
@@ -254,7 +338,7 @@ class TestForecastAPI:
 class TestForecastIntegration:
     def test_forecast_with_real_data(self, db: Session):
         """Forecast from real CSV data should produce reasonable results."""
-        cats = _seed_categories(db)
+        _seed_categories(db)
         input_dir = Path(__file__).resolve().parent.parent.parent / "input"
         if not input_dir.is_dir():
             return

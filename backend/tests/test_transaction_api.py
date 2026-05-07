@@ -8,9 +8,10 @@ from app.models import Category, Transaction
 
 def _make_txn(db: Session, **overrides) -> Transaction:
     """Create a transaction with sensible defaults."""
+    from tests.conftest import get_or_create_account
+
     defaults = {
         "source_file": "test.csv",
-        "account": "Chase CC",
         "date": date(2025, 6, 15),
         "raw_description": "TEST VENDOR",
         "vendor": "Test Vendor",
@@ -18,6 +19,13 @@ def _make_txn(db: Session, **overrides) -> Transaction:
         "import_hash": None,  # must be provided via overrides or auto-gen
         "is_transfer": False,
     }
+    account_name = overrides.pop("account", None) or "Chase CC"
+    account_id_override = overrides.pop("account_id", None)
+    if account_id_override is None:
+        account = get_or_create_account(db, account_name, type="credit_card", institution="Chase")
+        defaults["account_id"] = account.id
+    else:
+        defaults["account_id"] = account_id_override
     defaults.update(overrides)
     if defaults["import_hash"] is None:
         defaults["import_hash"] = f"hash_{id(defaults)}_{defaults['vendor']}_{defaults['amount']}"
@@ -46,12 +54,17 @@ class TestListTransactions:
         assert resp.json()["total"] == 2
 
     def test_filter_by_account(self, client: TestClient, db: Session):
-        _make_txn(db, account="Chase CC", import_hash="c1")
-        _make_txn(db, account="BECU Checking", import_hash="c2")
-        resp = client.get("/api/transactions", params={"account": "Chase CC"})
+        from tests.conftest import get_or_create_account
+
+        chase = get_or_create_account(db, "Chase CC", type="credit_card", institution="Chase")
+        becu = get_or_create_account(db, "BECU Checking", type="checking", institution="BECU")
+        _make_txn(db, account_id=chase.id, import_hash="c1")
+        _make_txn(db, account_id=becu.id, import_hash="c2")
+        resp = client.get("/api/transactions", params={"account_id": chase.id})
         data = resp.json()
         assert data["total"] == 1
-        assert data["items"][0]["account"] == "Chase CC"
+        assert data["items"][0]["account_name"] == "Chase CC"
+        assert data["items"][0]["account_id"] == chase.id
 
     def test_filter_by_category(self, client: TestClient, db: Session, seed_categories):
         gid = seed_categories["Groceries"]
@@ -110,9 +123,7 @@ class TestListTransactions:
     def test_sort_by_amount_asc(self, client: TestClient, db: Session):
         _make_txn(db, amount=-100.0, vendor="Big", import_hash="so1")
         _make_txn(db, amount=-10.0, vendor="Small", import_hash="so2")
-        resp = client.get(
-            "/api/transactions", params={"sort_by": "amount", "sort_dir": "asc"}
-        )
+        resp = client.get("/api/transactions", params={"sort_by": "amount", "sort_dir": "asc"})
         items = resp.json()["items"]
         assert items[0]["amount"] == -100.0
         assert items[1]["amount"] == -10.0
@@ -120,9 +131,7 @@ class TestListTransactions:
     def test_sort_by_vendor(self, client: TestClient, db: Session):
         _make_txn(db, vendor="Zebra", import_hash="sv1")
         _make_txn(db, vendor="Apple", import_hash="sv2")
-        resp = client.get(
-            "/api/transactions", params={"sort_by": "vendor", "sort_dir": "asc"}
-        )
+        resp = client.get("/api/transactions", params={"sort_by": "vendor", "sort_dir": "asc"})
         items = resp.json()["items"]
         assert items[0]["vendor"] == "Apple"
         assert items[1]["vendor"] == "Zebra"
@@ -161,18 +170,14 @@ class TestUpdateTransaction:
     def test_patch_category(self, client: TestClient, db: Session, seed_categories):
         txn = _make_txn(db, import_hash="up1")
         gid = seed_categories["Groceries"]
-        resp = client.patch(
-            f"/api/transactions/{txn.id}", json={"category_id": gid}
-        )
+        resp = client.patch(f"/api/transactions/{txn.id}", json={"category_id": gid})
         assert resp.status_code == 200
         assert resp.json()["category_id"] == gid
         assert resp.json()["category_name"] == "Groceries"
 
     def test_patch_verified(self, client: TestClient, db: Session):
         txn = _make_txn(db, import_hash="up2")
-        resp = client.patch(
-            f"/api/transactions/{txn.id}", json={"is_verified": True}
-        )
+        resp = client.patch(f"/api/transactions/{txn.id}", json={"is_verified": True})
         assert resp.status_code == 200
         assert resp.json()["is_verified"] is True
 
@@ -212,9 +217,7 @@ class TestBulkUpdate:
 
 
 class TestCategoryAPI:
-    def test_list_categories_with_counts(
-        self, client: TestClient, db: Session, seed_categories
-    ):
+    def test_list_categories_with_counts(self, client: TestClient, db: Session, seed_categories):
         gid = seed_categories["Groceries"]
         _make_txn(db, category_id=gid, import_hash="cc1")
         _make_txn(db, category_id=gid, import_hash="cc2")

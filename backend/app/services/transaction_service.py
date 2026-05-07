@@ -9,7 +9,7 @@ from app.models import Transaction
 def list_transactions(
     db: Session,
     *,
-    account: str | None = None,
+    account_id: int | None = None,
     category_id: int | None = None,
     vendor: str | None = None,
     date_from: date | None = None,
@@ -31,8 +31,8 @@ def list_transactions(
     """
     query = db.query(Transaction)
 
-    if account is not None:
-        query = query.filter(Transaction.account == account)
+    if account_id is not None:
+        query = query.filter(Transaction.account_id == account_id)
     if category_id is not None:
         query = query.filter(Transaction.category_id == category_id)
     if vendor is not None:
@@ -68,7 +68,7 @@ def list_transactions(
         "amount": Transaction.amount,
         "vendor": Transaction.vendor,
         "category_id": Transaction.category_id,
-        "account": Transaction.account,
+        "account_id": Transaction.account_id,
     }
     sort_col = allowed_sort_columns.get(sort_by, Transaction.date)
     if sort_dir == "asc":

@@ -21,15 +21,19 @@ def get_summary(
         base = base.filter(Transaction.date <= date_to)
 
     # Total spending (negative amounts = outflow)
-    spending_result = base.filter(Transaction.amount < 0).with_entities(
-        func.coalesce(func.sum(Transaction.amount), 0.0)
-    ).scalar()
+    spending_result = (
+        base.filter(Transaction.amount < 0)
+        .with_entities(func.coalesce(func.sum(Transaction.amount), 0.0))
+        .scalar()
+    )
     total_spending = abs(spending_result)
 
     # Total income (positive amounts = inflow)
-    income_result = base.filter(Transaction.amount > 0).with_entities(
-        func.coalesce(func.sum(Transaction.amount), 0.0)
-    ).scalar()
+    income_result = (
+        base.filter(Transaction.amount > 0)
+        .with_entities(func.coalesce(func.sum(Transaction.amount), 0.0))
+        .scalar()
+    )
     total_income = float(income_result)
 
     # Savings rate
@@ -84,13 +88,10 @@ def get_monthly_stats(
     category_id: int | None = None,
 ) -> list[dict]:
     """Per-month spending by category. Excludes transfers."""
-    base = (
-        db.query(Transaction)
-        .filter(
-            Transaction.is_transfer.is_(False),
-            Transaction.amount < 0,
-            extract("year", Transaction.date) == year,
-        )
+    base = db.query(Transaction).filter(
+        Transaction.is_transfer.is_(False),
+        Transaction.amount < 0,
+        extract("year", Transaction.date) == year,
     )
 
     if category_id is not None:

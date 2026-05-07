@@ -40,27 +40,21 @@ def create_category(body: CategoryCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(cat)
 
-    count = db.query(func.count(Transaction.id)).filter(
-        Transaction.category_id == cat.id
-    ).scalar()
+    count = db.query(func.count(Transaction.id)).filter(Transaction.category_id == cat.id).scalar()
     return CategoryResponse(
         id=cat.id, name=cat.name, is_system=cat.is_system, transaction_count=count
     )
 
 
 @router.patch("/{category_id}", response_model=CategoryResponse)
-def update_category(
-    category_id: int, body: CategoryUpdate, db: Session = Depends(get_db)
-):
+def update_category(category_id: int, body: CategoryUpdate, db: Session = Depends(get_db)):
     cat = db.query(Category).filter(Category.id == category_id).first()
     if cat is None:
         raise HTTPException(status_code=404, detail="Category not found")
 
     # Check name uniqueness
     conflict = (
-        db.query(Category)
-        .filter(Category.name == body.name, Category.id != category_id)
-        .first()
+        db.query(Category).filter(Category.name == body.name, Category.id != category_id).first()
     )
     if conflict:
         raise HTTPException(status_code=409, detail="Category name already in use")
@@ -69,9 +63,7 @@ def update_category(
     db.commit()
     db.refresh(cat)
 
-    count = db.query(func.count(Transaction.id)).filter(
-        Transaction.category_id == cat.id
-    ).scalar()
+    count = db.query(func.count(Transaction.id)).filter(Transaction.category_id == cat.id).scalar()
     return CategoryResponse(
         id=cat.id, name=cat.name, is_system=cat.is_system, transaction_count=count
     )
@@ -83,9 +75,9 @@ def delete_category(category_id: int, db: Session = Depends(get_db)):
     if cat is None:
         raise HTTPException(status_code=404, detail="Category not found")
 
-    txn_count = db.query(func.count(Transaction.id)).filter(
-        Transaction.category_id == category_id
-    ).scalar()
+    txn_count = (
+        db.query(func.count(Transaction.id)).filter(Transaction.category_id == category_id).scalar()
+    )
     if txn_count > 0:
         raise HTTPException(
             status_code=409,

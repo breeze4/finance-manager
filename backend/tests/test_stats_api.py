@@ -7,9 +7,10 @@ from app.models import Transaction
 
 
 def _make_txn(db: Session, **overrides) -> Transaction:
+    from tests.conftest import get_or_create_account
+
     defaults = {
         "source_file": "test.csv",
-        "account": "Chase CC",
         "date": date(2025, 6, 15),
         "raw_description": "TEST",
         "vendor": "Test Vendor",
@@ -17,6 +18,10 @@ def _make_txn(db: Session, **overrides) -> Transaction:
         "import_hash": None,
         "is_transfer": False,
     }
+    # Resolve account string -> account_id (fixtures may already exist)
+    account_name = overrides.pop("account", None) or "Chase CC"
+    account = get_or_create_account(db, account_name, type="credit_card", institution="Chase")
+    defaults["account_id"] = account.id
     defaults.update(overrides)
     if defaults["import_hash"] is None:
         defaults["import_hash"] = f"hash_{id(defaults)}_{defaults['amount']}"
@@ -51,9 +56,7 @@ class TestSummaryTransferExclusion:
         data = resp.json()
         assert data["total_spending"] == 300.0  # Not 800
 
-    def test_transfers_excluded_from_income(
-        self, client: TestClient, db: Session, seed_categories
-    ):
+    def test_transfers_excluded_from_income(self, client: TestClient, db: Session, seed_categories):
         # Regular income
         _make_txn(
             db,
@@ -74,9 +77,7 @@ class TestSummaryTransferExclusion:
         data = resp.json()
         assert data["total_income"] == 3000.0  # Not 3500
 
-    def test_transfers_excluded_from_transaction_count(
-        self, client: TestClient, db: Session
-    ):
+    def test_transfers_excluded_from_transaction_count(self, client: TestClient, db: Session):
         _make_txn(db, amount=-50.0, import_hash="tc1")
         _make_txn(db, amount=-50.0, import_hash="tc2")
         _make_txn(db, amount=-50.0, is_transfer=True, import_hash="tc3")
@@ -89,9 +90,7 @@ class TestSummaryTransferExclusion:
         self, client: TestClient, db: Session, seed_categories
     ):
         gid = seed_categories["Groceries"]
-        _make_txn(
-            db, amount=-100.0, date=date(2025, 3, 10), category_id=gid, import_hash="tm1"
-        )
+        _make_txn(db, amount=-100.0, date=date(2025, 3, 10), category_id=gid, import_hash="tm1")
         # Transfer in the same month — excluded
         _make_txn(
             db,
@@ -115,9 +114,7 @@ class TestSummaryTransferExclusion:
 class TestSummaryAccuracy:
     """Cross-check stats math."""
 
-    def test_spending_sums_correctly(
-        self, client: TestClient, db: Session, seed_categories
-    ):
+    def test_spending_sums_correctly(self, client: TestClient, db: Session, seed_categories):
         gid = seed_categories["Groceries"]
         did = seed_categories["Dining"]
         amounts = [-45.67, -89.00, -120.50, -33.25]
@@ -130,9 +127,7 @@ class TestSummaryAccuracy:
         expected = sum(abs(a) for a in amounts)
         assert abs(data["total_spending"] - expected) < 0.01
 
-    def test_savings_rate_calculation(
-        self, client: TestClient, db: Session, seed_categories
-    ):
+    def test_savings_rate_calculation(self, client: TestClient, db: Session, seed_categories):
         _make_txn(
             db,
             amount=5000.0,
@@ -184,9 +179,7 @@ class TestSummaryAccuracy:
         assert cats[1]["category_name"] == "Entertainment"
         assert cats[2]["category_name"] == "Dining"
 
-    def test_top_categories_percentages(
-        self, client: TestClient, db: Session, seed_categories
-    ):
+    def test_top_categories_percentages(self, client: TestClient, db: Session, seed_categories):
         _make_txn(
             db,
             amount=-750.0,
@@ -231,9 +224,7 @@ class TestSummaryAccuracy:
 
 
 class TestMonthlyStatsAccuracy:
-    def test_monthly_breakdown(
-        self, client: TestClient, db: Session, seed_categories
-    ):
+    def test_monthly_breakdown(self, client: TestClient, db: Session, seed_categories):
         gid = seed_categories["Groceries"]
         did = seed_categories["Dining"]
 
@@ -252,9 +243,7 @@ class TestMonthlyStatsAccuracy:
         )
         assert jan_grocery["total"] == 150.0
 
-        jan_dining = next(
-            m for m in months if m["month"] == 1 and m["category_name"] == "Dining"
-        )
+        jan_dining = next(m for m in months if m["month"] == 1 and m["category_name"] == "Dining")
         assert jan_dining["total"] == 80.0
 
         # March should have Groceries (200)
@@ -263,26 +252,20 @@ class TestMonthlyStatsAccuracy:
         )
         assert mar_grocery["total"] == 200.0
 
-    def test_monthly_category_filter(
-        self, client: TestClient, db: Session, seed_categories
-    ):
+    def test_monthly_category_filter(self, client: TestClient, db: Session, seed_categories):
         gid = seed_categories["Groceries"]
         did = seed_categories["Dining"]
 
         _make_txn(db, amount=-100.0, date=date(2025, 1, 10), category_id=gid, import_hash="mcf1")
         _make_txn(db, amount=-80.0, date=date(2025, 1, 15), category_id=did, import_hash="mcf2")
 
-        resp = client.get(
-            "/api/stats/monthly", params={"year": 2025, "category_id": gid}
-        )
+        resp = client.get("/api/stats/monthly", params={"year": 2025, "category_id": gid})
         months = resp.json()["months"]
         assert len(months) == 1
         assert months[0]["category_name"] == "Groceries"
         assert months[0]["total"] == 100.0
 
-    def test_monthly_wrong_year_empty(
-        self, client: TestClient, db: Session, seed_categories
-    ):
+    def test_monthly_wrong_year_empty(self, client: TestClient, db: Session, seed_categories):
         gid = seed_categories["Groceries"]
         _make_txn(db, amount=-100.0, date=date(2025, 1, 10), category_id=gid, import_hash="wy1")
 

@@ -11,9 +11,22 @@ from app.services.import_service import import_all
 
 def _seed_categories(db: Session) -> dict[str, int]:
     names = [
-        "Shopping", "Groceries", "Dining", "Health & Wellness", "Entertainment",
-        "Bills & Utilities", "Travel", "Gas", "Education", "Personal", "Home",
-        "Gifts & Donations", "Income", "Investments", "Transfers", "Uncategorized",
+        "Shopping",
+        "Groceries",
+        "Dining",
+        "Health & Wellness",
+        "Entertainment",
+        "Bills & Utilities",
+        "Travel",
+        "Gas",
+        "Education",
+        "Personal",
+        "Home",
+        "Gifts & Donations",
+        "Income",
+        "Investments",
+        "Transfers",
+        "Uncategorized",
     ]
     for n in names:
         db.add(Category(name=n, is_system=True))
@@ -30,11 +43,14 @@ def _make_txn(
     category_id: int | None = None,
     import_hash: str | None = None,
 ) -> Transaction:
+    from tests.conftest import get_or_create_account
+
     if import_hash is None:
         import_hash = f"{vendor}_{amount}_{txn_date}"
+    account = get_or_create_account(db, "Test")
     txn = Transaction(
         source_file="test.csv",
-        account="Test",
+        account_id=account.id,
         date=txn_date,
         raw_description=vendor,
         vendor=vendor,
@@ -57,8 +73,14 @@ class TestBudgetSuggestions:
 
         amounts = [400, 500, 600, 450, 550, 500]
         for i, amt in enumerate(amounts):
-            _make_txn(db, vendor="Store", amount=-amt, txn_date=date(2025, i + 1, 15),
-                      category_id=gid, import_hash=f"sg_{i}")
+            _make_txn(
+                db,
+                vendor="Store",
+                amount=-amt,
+                txn_date=date(2025, i + 1, 15),
+                category_id=gid,
+                import_hash=f"sg_{i}",
+            )
 
         suggestions = get_budget_suggestions(db, year=2026)
         groceries = [s for s in suggestions if s.category_name == "Groceries"]
@@ -72,10 +94,22 @@ class TestBudgetSuggestions:
 
         # 11 months at $200, December at $800
         for i in range(11):
-            _make_txn(db, vendor="Store", amount=-200, txn_date=date(2025, i + 1, 15),
-                      category_id=sid, import_hash=f"sea_{i}")
-        _make_txn(db, vendor="Store", amount=-800, txn_date=date(2025, 12, 15),
-                  category_id=sid, import_hash="sea_dec")
+            _make_txn(
+                db,
+                vendor="Store",
+                amount=-200,
+                txn_date=date(2025, i + 1, 15),
+                category_id=sid,
+                import_hash=f"sea_{i}",
+            )
+        _make_txn(
+            db,
+            vendor="Store",
+            amount=-800,
+            txn_date=date(2025, 12, 15),
+            category_id=sid,
+            import_hash="sea_dec",
+        )
 
         suggestions = get_budget_suggestions(db, year=2026)
         shopping = [s for s in suggestions if s.category_name == "Shopping"][0]
@@ -90,10 +124,22 @@ class TestBudgetSuggestions:
         cats = _seed_categories(db)
         gid = cats["Groceries"]
 
-        _make_txn(db, vendor="Store", amount=-400, txn_date=date(2025, 1, 15),
-                  category_id=gid, import_hash="few_1")
-        _make_txn(db, vendor="Store", amount=-500, txn_date=date(2025, 2, 15),
-                  category_id=gid, import_hash="few_2")
+        _make_txn(
+            db,
+            vendor="Store",
+            amount=-400,
+            txn_date=date(2025, 1, 15),
+            category_id=gid,
+            import_hash="few_1",
+        )
+        _make_txn(
+            db,
+            vendor="Store",
+            amount=-500,
+            txn_date=date(2025, 2, 15),
+            category_id=gid,
+            import_hash="few_2",
+        )
 
         suggestions = get_budget_suggestions(db, year=2026)
         groceries = [s for s in suggestions if s.category_name == "Groceries"]
@@ -106,10 +152,17 @@ class TestBudgetSuggestions:
 
         amounts = [400, 450, 500, 550, 600, 650]
         for i, amt in enumerate(amounts):
-            _make_txn(db, vendor="Store", amount=-amt, txn_date=date(2025, i + 1, 15),
-                      category_id=gid, import_hash=f"ci_{i}")
+            _make_txn(
+                db,
+                vendor="Store",
+                amount=-amt,
+                txn_date=date(2025, i + 1, 15),
+                category_id=gid,
+                import_hash=f"ci_{i}",
+            )
 
         from app.services.budget_service import get_historical_analysis
+
         stats = get_historical_analysis(db)
         groceries_stats = [s for s in stats if s.category_name == "Groceries"][0]
 
@@ -130,8 +183,14 @@ class TestBudgetSuggestions:
         gid = cats["Groceries"]
 
         for i in range(6):
-            _make_txn(db, vendor="Store", amount=-500, txn_date=date(2025, i + 1, 15),
-                      category_id=gid, import_hash=f"12m_{i}")
+            _make_txn(
+                db,
+                vendor="Store",
+                amount=-500,
+                txn_date=date(2025, i + 1, 15),
+                category_id=gid,
+                import_hash=f"12m_{i}",
+            )
 
         suggestions = get_budget_suggestions(db, year=2026)
         groceries = [s for s in suggestions if s.category_name == "Groceries"][0]
@@ -143,8 +202,14 @@ class TestBudgetSuggestions:
         gid = cats["Groceries"]
 
         for i in range(6):
-            _make_txn(db, vendor="Store", amount=-500, txn_date=date(2025, i + 1, 15),
-                      category_id=gid, import_hash=f"basis_{i}")
+            _make_txn(
+                db,
+                vendor="Store",
+                amount=-500,
+                txn_date=date(2025, i + 1, 15),
+                category_id=gid,
+                import_hash=f"basis_{i}",
+            )
 
         suggestions = get_budget_suggestions(db, year=2026)
         groceries = [s for s in suggestions if s.category_name == "Groceries"][0]
@@ -158,8 +223,14 @@ class TestBudgetSuggestionsAPI:
         gid = cats["Groceries"]
 
         for i in range(6):
-            _make_txn(db, vendor="Store", amount=-500, txn_date=date(2025, i + 1, 15),
-                      category_id=gid, import_hash=f"api_sug_{i}")
+            _make_txn(
+                db,
+                vendor="Store",
+                amount=-500,
+                txn_date=date(2025, i + 1, 15),
+                category_id=gid,
+                import_hash=f"api_sug_{i}",
+            )
 
         resp = client.get("/api/budget/suggestions/2026")
         assert resp.status_code == 200
@@ -180,7 +251,7 @@ class TestBudgetSuggestionsAPI:
 class TestBudgetSuggestionsIntegration:
     def test_suggestions_from_real_data(self, db: Session):
         """Suggestions from real data should exist for common categories."""
-        cats = _seed_categories(db)
+        _seed_categories(db)
         input_dir = Path(__file__).resolve().parent.parent.parent / "input"
         if not input_dir.is_dir():
             return

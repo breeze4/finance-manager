@@ -15,9 +15,22 @@ from app.services.budget_service import (
 
 def _seed_categories(db: Session) -> dict[str, int]:
     names = [
-        "Shopping", "Groceries", "Dining", "Health & Wellness", "Entertainment",
-        "Bills & Utilities", "Travel", "Gas", "Education", "Personal", "Home",
-        "Gifts & Donations", "Income", "Investments", "Transfers", "Uncategorized",
+        "Shopping",
+        "Groceries",
+        "Dining",
+        "Health & Wellness",
+        "Entertainment",
+        "Bills & Utilities",
+        "Travel",
+        "Gas",
+        "Education",
+        "Personal",
+        "Home",
+        "Gifts & Donations",
+        "Income",
+        "Investments",
+        "Transfers",
+        "Uncategorized",
     ]
     for n in names:
         db.add(Category(name=n, is_system=True))
@@ -35,11 +48,14 @@ def _make_txn(
     is_transfer: bool = False,
     import_hash: str | None = None,
 ) -> Transaction:
+    from tests.conftest import get_or_create_account
+
     if import_hash is None:
         import_hash = f"{vendor}_{amount}_{txn_date}"
+    account = get_or_create_account(db, "Test")
     txn = Transaction(
         source_file="test.csv",
-        account="Test",
+        account_id=account.id,
         date=txn_date,
         raw_description=vendor,
         vendor=vendor,
@@ -78,8 +94,9 @@ class TestBudgetCRUD:
         cats = _seed_categories(db)
         gid = cats["Groceries"]
 
-        budget = set_budget(db, category_id=gid, year=2026, monthly_amount=500.0,
-                            rollover_mode=True)
+        budget = set_budget(
+            db, category_id=gid, year=2026, monthly_amount=500.0, rollover_mode=True
+        )
         assert budget.rollover_mode is True
 
     def test_list_budgets(self, db: Session):
@@ -100,8 +117,7 @@ class TestBudgetCRUD:
         gid = cats["Groceries"]
 
         set_budget(db, category_id=gid, year=2026, monthly_amount=500.0)
-        override = set_monthly_override(db, category_id=gid, year=2026, month=12,
-                                        amount=800.0)
+        override = set_monthly_override(db, category_id=gid, year=2026, month=12, amount=800.0)
         assert override.month == 12
         assert override.amount == 800.0
 
@@ -115,20 +131,19 @@ class TestBudgetCRUD:
         assert o2.amount == 900.0
 
         # Should only be one override, not two.
-        budget = db.query(Budget).filter(
-            Budget.category_id == gid, Budget.year == 2026
-        ).first()
-        overrides = db.query(BudgetMonthlyOverride).filter(
-            BudgetMonthlyOverride.budget_id == budget.id
-        ).all()
+        budget = db.query(Budget).filter(Budget.category_id == gid, Budget.year == 2026).first()
+        overrides = (
+            db.query(BudgetMonthlyOverride)
+            .filter(BudgetMonthlyOverride.budget_id == budget.id)
+            .all()
+        )
         assert len(overrides) == 1
 
     def test_override_no_budget_returns_none(self, db: Session):
         cats = _seed_categories(db)
         gid = cats["Groceries"]
 
-        result = set_monthly_override(db, category_id=gid, year=2026, month=12,
-                                      amount=800.0)
+        result = set_monthly_override(db, category_id=gid, year=2026, month=12, amount=800.0)
         assert result is None
 
     def test_delete_override(self, db: Session):
@@ -147,8 +162,7 @@ class TestBudgetCRUD:
 
     def test_delete_override_no_budget(self, db: Session):
         cats = _seed_categories(db)
-        result = delete_monthly_override(db, category_id=cats["Groceries"],
-                                         year=2026, month=12)
+        result = delete_monthly_override(db, category_id=cats["Groceries"], year=2026, month=12)
         assert result is False
 
 
@@ -160,17 +174,28 @@ class TestActualVsBudget:
         set_budget(db, category_id=gid, year=2026, monthly_amount=500.0)
 
         # January: $450 in groceries
-        _make_txn(db, vendor="Store A", amount=-250, txn_date=date(2026, 1, 5),
-                  category_id=gid, import_hash="avb_1")
-        _make_txn(db, vendor="Store B", amount=-200, txn_date=date(2026, 1, 20),
-                  category_id=gid, import_hash="avb_2")
+        _make_txn(
+            db,
+            vendor="Store A",
+            amount=-250,
+            txn_date=date(2026, 1, 5),
+            category_id=gid,
+            import_hash="avb_1",
+        )
+        _make_txn(
+            db,
+            vendor="Store B",
+            amount=-200,
+            txn_date=date(2026, 1, 20),
+            category_id=gid,
+            import_hash="avb_2",
+        )
 
         result = get_actual_vs_budget(db, year=2026)
 
         # Find January Groceries.
         jan_groceries = [
-            e for e in result.entries
-            if e.category_name == "Groceries" and e.month == 1
+            e for e in result.entries if e.category_name == "Groceries" and e.month == 1
         ]
         assert len(jan_groceries) == 1
         entry = jan_groceries[0]
@@ -186,8 +211,14 @@ class TestActualVsBudget:
         set_budget(db, category_id=gid, year=2026, monthly_amount=500.0)
         set_monthly_override(db, category_id=gid, year=2026, month=1, amount=600.0)
 
-        _make_txn(db, vendor="Store", amount=-450, txn_date=date(2026, 1, 15),
-                  category_id=gid, import_hash="ovr_1")
+        _make_txn(
+            db,
+            vendor="Store",
+            amount=-450,
+            txn_date=date(2026, 1, 15),
+            category_id=gid,
+            import_hash="ovr_1",
+        )
 
         result = get_actual_vs_budget(db, year=2026)
         jan = [e for e in result.entries if e.month == 1][0]
@@ -215,10 +246,23 @@ class TestActualVsBudget:
 
         set_budget(db, category_id=gid, year=2026, monthly_amount=500.0)
 
-        _make_txn(db, vendor="Store", amount=-300, txn_date=date(2026, 1, 15),
-                  category_id=gid, import_hash="te_1")
-        _make_txn(db, vendor="Transfer", amount=-200, txn_date=date(2026, 1, 15),
-                  category_id=gid, is_transfer=True, import_hash="te_2")
+        _make_txn(
+            db,
+            vendor="Store",
+            amount=-300,
+            txn_date=date(2026, 1, 15),
+            category_id=gid,
+            import_hash="te_1",
+        )
+        _make_txn(
+            db,
+            vendor="Transfer",
+            amount=-200,
+            txn_date=date(2026, 1, 15),
+            category_id=gid,
+            is_transfer=True,
+            import_hash="te_2",
+        )
 
         result = get_actual_vs_budget(db, year=2026)
         jan = [e for e in result.entries if e.month == 1][0]
@@ -243,10 +287,22 @@ class TestActualVsBudget:
         set_budget(db, category_id=gid, year=2026, monthly_amount=500.0)
         set_budget(db, category_id=did, year=2026, monthly_amount=300.0)
 
-        _make_txn(db, vendor="Store", amount=-400, txn_date=date(2026, 1, 15),
-                  category_id=gid, import_hash="ru_1")
-        _make_txn(db, vendor="Restaurant", amount=-250, txn_date=date(2026, 1, 15),
-                  category_id=did, import_hash="ru_2")
+        _make_txn(
+            db,
+            vendor="Store",
+            amount=-400,
+            txn_date=date(2026, 1, 15),
+            category_id=gid,
+            import_hash="ru_1",
+        )
+        _make_txn(
+            db,
+            vendor="Restaurant",
+            amount=-250,
+            txn_date=date(2026, 1, 15),
+            category_id=did,
+            import_hash="ru_2",
+        )
 
         result = get_actual_vs_budget(db, year=2026)
         jan_rollup = [r for r in result.monthly_rollups if r.month == 1][0]
@@ -272,8 +328,14 @@ class TestActualVsBudget:
         gid = cats["Groceries"]
 
         set_budget(db, category_id=gid, year=2026, monthly_amount=300.0)
-        _make_txn(db, vendor="Store", amount=-450, txn_date=date(2026, 1, 15),
-                  category_id=gid, import_hash="over_1")
+        _make_txn(
+            db,
+            vendor="Store",
+            amount=-450,
+            txn_date=date(2026, 1, 15),
+            category_id=gid,
+            import_hash="over_1",
+        )
 
         result = get_actual_vs_budget(db, year=2026)
         jan = [e for e in result.entries if e.month == 1][0]
@@ -341,8 +403,14 @@ class TestBudgetAPI:
 
         client.put(f"/api/budget/{gid}/2026", json={"monthly_amount": 500.0})
 
-        _make_txn(db, vendor="Store", amount=-400, txn_date=date(2026, 1, 15),
-                  category_id=gid, import_hash="api_avb_1")
+        _make_txn(
+            db,
+            vendor="Store",
+            amount=-400,
+            txn_date=date(2026, 1, 15),
+            category_id=gid,
+            import_hash="api_avb_1",
+        )
 
         resp = client.get("/api/budget/actual/2026")
         assert resp.status_code == 200

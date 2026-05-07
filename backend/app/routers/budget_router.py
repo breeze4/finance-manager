@@ -25,8 +25,7 @@ def _budget_to_response(b) -> BudgetResponse:
         monthly_amount=b.monthly_amount,
         rollover_mode=b.rollover_mode,
         monthly_overrides=[
-            MonthlyOverrideResponse(month=o.month, amount=o.amount)
-            for o in b.monthly_overrides
+            MonthlyOverrideResponse(month=o.month, amount=o.amount) for o in b.monthly_overrides
         ],
         created_at=b.created_at,
         updated_at=b.updated_at,
@@ -119,7 +118,10 @@ def delete_monthly_override(
     db: Session = Depends(get_db),
 ):
     deleted = budget_service.delete_monthly_override(
-        db, category_id=category_id, year=year, month=month,
+        db,
+        category_id=category_id,
+        year=year,
+        month=month,
     )
     if not deleted:
         raise HTTPException(status_code=404, detail="Override not found")

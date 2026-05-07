@@ -71,12 +71,14 @@ class SimpleForecaster(BaseForecaster):
                 total = sum(li.amount for li in line_items)
                 status = "projected"
 
-            months.append(MonthForecast(
-                month=month,
-                status=status,
-                total=round(total, 2),
-                line_items=line_items,
-            ))
+            months.append(
+                MonthForecast(
+                    month=month,
+                    status=status,
+                    total=round(total, 2),
+                    line_items=line_items,
+                )
+            )
             annual_total += total
 
         return ForecastResult(
@@ -86,9 +88,7 @@ class SimpleForecaster(BaseForecaster):
             annual_total=round(annual_total, 2),
         )
 
-    def _get_monthly_actuals(
-        self, db: Session, year: int
-    ) -> dict[int, dict[int | None, float]]:
+    def _get_monthly_actuals(self, db: Session, year: int) -> dict[int, dict[int | None, float]]:
         """Returns {month: {category_id: abs(total)}} for a year."""
         rows = (
             db.query(Transaction)
@@ -220,8 +220,14 @@ class SimpleForecaster(BaseForecaster):
 
         result: dict[int | None, float] = defaultdict(float)
         for sub in subs:
-            amt = sub.amount if sub.amount else (
-                (sub.amount_min + sub.amount_max) / 2 if sub.amount_min and sub.amount_max else 0
+            amt = (
+                sub.amount
+                if sub.amount
+                else (
+                    (sub.amount_min + sub.amount_max) / 2
+                    if sub.amount_min and sub.amount_max
+                    else 0
+                )
             )
             mult = multipliers.get(sub.frequency, 1)
             result[sub.category_id] += amt * mult
@@ -237,12 +243,14 @@ class SimpleForecaster(BaseForecaster):
         items = []
         month_data = actuals.get(month, {})
         for cat_id, amount in month_data.items():
-            items.append(ForecastLineItem(
-                category_id=cat_id,
-                category_name="",  # will be filled by caller if needed
-                amount=round(amount, 2),
-                basis="actual",
-            ))
+            items.append(
+                ForecastLineItem(
+                    category_id=cat_id,
+                    category_name="",  # will be filled by caller if needed
+                    amount=round(amount, 2),
+                    basis="actual",
+                )
+            )
         return items
 
     def _partial_month_items(
@@ -258,6 +266,7 @@ class SimpleForecaster(BaseForecaster):
     ) -> list[ForecastLineItem]:
         """Current month: actual to date + projected remainder."""
         import calendar
+
         days_in_month = calendar.monthrange(year, month)[1]
         fraction_elapsed = day_of_month / days_in_month
         fraction_remaining = 1 - fraction_elapsed
@@ -280,12 +289,14 @@ class SimpleForecaster(BaseForecaster):
             projected_remainder = full_month_est * fraction_remaining
             total = actual_so_far + projected_remainder
 
-            items.append(ForecastLineItem(
-                category_id=cat_id,
-                category_name=overall_avgs.get(cat_id, ("Unknown", 0))[0],
-                amount=round(total, 2),
-                basis="partial",
-            ))
+            items.append(
+                ForecastLineItem(
+                    category_id=cat_id,
+                    category_name=overall_avgs.get(cat_id, ("Unknown", 0))[0],
+                    amount=round(total, 2),
+                    basis="partial",
+                )
+            )
 
         return items
 
@@ -332,21 +343,25 @@ class SimpleForecaster(BaseForecaster):
                 seen_sub_cats.add(cat_id)
 
             cat_name = overall_avgs.get(cat_id, ("Unknown", 0))[0]
-            items.append(ForecastLineItem(
-                category_id=cat_id,
-                category_name=cat_name,
-                amount=round(adjusted, 2),
-                basis=basis,
-            ))
+            items.append(
+                ForecastLineItem(
+                    category_id=cat_id,
+                    category_name=cat_name,
+                    amount=round(adjusted, 2),
+                    basis=basis,
+                )
+            )
 
         # Add subscription categories not covered by historical data.
         for cat_id, sub_amount in subscriptions.items():
             if cat_id not in seen_sub_cats and sub_amount > 0:
-                items.append(ForecastLineItem(
-                    category_id=cat_id,
-                    category_name=overall_avgs.get(cat_id, ("Unknown", 0))[0],
-                    amount=round(sub_amount, 2),
-                    basis="subscription",
-                ))
+                items.append(
+                    ForecastLineItem(
+                        category_id=cat_id,
+                        category_name=overall_avgs.get(cat_id, ("Unknown", 0))[0],
+                        amount=round(sub_amount, 2),
+                        basis="subscription",
+                    )
+                )
 
         return items

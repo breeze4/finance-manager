@@ -6,7 +6,8 @@ from pydantic import BaseModel
 class TransactionResponse(BaseModel):
     id: int
     source_file: str
-    account: str
+    account_id: int
+    account_name: str
     date: date
     post_date: date | None
     raw_description: str

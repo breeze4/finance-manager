@@ -99,8 +99,7 @@ def get_historical_analysis(
 
         # Monthly totals dict for transparency.
         monthly_totals = {
-            f"{yr:04d}-{mo:02d}": round(amt, 2)
-            for yr, mo, amt in sorted(months_data)
+            f"{yr:04d}-{mo:02d}": round(amt, 2) for yr, mo, amt in sorted(months_data)
         }
 
         results.append(
@@ -217,11 +216,7 @@ def set_budget(
     rollover_mode: bool = False,
 ) -> Budget:
     """Create or update a budget baseline for a category/year."""
-    budget = (
-        db.query(Budget)
-        .filter(Budget.category_id == category_id, Budget.year == year)
-        .first()
-    )
+    budget = db.query(Budget).filter(Budget.category_id == category_id, Budget.year == year).first()
     if budget is None:
         budget = Budget(
             category_id=category_id,
@@ -248,11 +243,7 @@ def set_monthly_override(
     amount: float,
 ) -> BudgetMonthlyOverride:
     """Set a per-month budget override. Creates the parent budget if needed."""
-    budget = (
-        db.query(Budget)
-        .filter(Budget.category_id == category_id, Budget.year == year)
-        .first()
-    )
+    budget = db.query(Budget).filter(Budget.category_id == category_id, Budget.year == year).first()
     if budget is None:
         return None
 
@@ -287,11 +278,7 @@ def delete_monthly_override(
     month: int,
 ) -> bool:
     """Remove a monthly override. Returns True if deleted, False if not found."""
-    budget = (
-        db.query(Budget)
-        .filter(Budget.category_id == category_id, Budget.year == year)
-        .first()
-    )
+    budget = db.query(Budget).filter(Budget.category_id == category_id, Budget.year == year).first()
     if budget is None:
         return False
 
@@ -379,7 +366,9 @@ def get_actual_vs_budget(db: Session, *, year: int) -> ActualVsBudgetResult:
             actual_map[(row.category_id, int(row.mo))] = round(abs(row.total), 2)
 
     entries = []
-    month_totals: dict[int, dict[str, float]] = defaultdict(lambda: {"budgeted": 0.0, "actual": 0.0})
+    month_totals: dict[int, dict[str, float]] = defaultdict(
+        lambda: {"budgeted": 0.0, "actual": 0.0}
+    )
 
     for budget in budgets:
         overrides = override_map.get(budget.id, {})
@@ -476,16 +465,16 @@ def get_budget_suggestions(db: Session, *, year: int) -> list[BudgetSuggestion]:
             if month in s.seasonal_months:
                 # Use the historical average for this specific month.
                 month_key_candidates = [
-                    v for k, v in s.monthly_totals.items()
-                    if k.endswith(f"-{month:02d}")
+                    v for k, v in s.monthly_totals.items() if k.endswith(f"-{month:02d}")
                 ]
                 if month_key_candidates:
                     month_avg = statistics.mean(month_key_candidates)
                 else:
                     month_avg = baseline
                 # Clamp to CI.
-                suggested = max(s.confidence_interval_low,
-                                min(month_avg, s.confidence_interval_high))
+                suggested = max(
+                    s.confidence_interval_low, min(month_avg, s.confidence_interval_high)
+                )
             else:
                 suggested = baseline
 
@@ -494,11 +483,24 @@ def get_budget_suggestions(db: Session, *, year: int) -> list[BudgetSuggestion]:
         # Build basis text.
         parts = [f"Based on ${baseline:.0f} avg"]
         if s.confidence_interval_low != s.confidence_interval_high:
-            parts.append(f"${s.confidence_interval_low:.0f}–${s.confidence_interval_high:.0f} range")
+            parts.append(
+                f"${s.confidence_interval_low:.0f}–${s.confidence_interval_high:.0f} range"
+            )
         if s.seasonal_months:
-            month_names = {1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May",
-                           6: "Jun", 7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct",
-                           11: "Nov", 12: "Dec"}
+            month_names = {
+                1: "Jan",
+                2: "Feb",
+                3: "Mar",
+                4: "Apr",
+                5: "May",
+                6: "Jun",
+                7: "Jul",
+                8: "Aug",
+                9: "Sep",
+                10: "Oct",
+                11: "Nov",
+                12: "Dec",
+            }
             seasonal_str = ", ".join(month_names[m] for m in s.seasonal_months)
             parts.append(f"spike detected in {seasonal_str}")
         basis = ", ".join(parts)

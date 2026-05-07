@@ -2,12 +2,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import (
+    account_router,
     budget_router,
     category_router,
+    coast_fire_router,
     forecast_router,
     import_router,
+    mortgage_router,
     payment_router,
     rules_router,
+    snapshots_router,
     stats_router,
     subscription_router,
     transaction_router,
@@ -23,6 +27,10 @@ app.include_router(payment_router.router)
 app.include_router(subscription_router.router)
 app.include_router(budget_router.router)
 app.include_router(forecast_router.router)
+app.include_router(coast_fire_router.router)
+app.include_router(mortgage_router.router)
+app.include_router(account_router.router)
+app.include_router(snapshots_router.router)
 
 app.add_middleware(
     CORSMiddleware,

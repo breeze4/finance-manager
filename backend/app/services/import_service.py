@@ -1,14 +1,25 @@
 import hashlib
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from app.models import Category, ImportLog, Transaction
+from app.models import Account, Category, ImportLog, Transaction
 from app.parsers.base import RawTransaction
 from app.parsers.chase_cc import ChaseCcParser
 from app.parsers.registry import detect_parser
 from app.services.classification_service import find_matching_rule
+
+logger = logging.getLogger(__name__)
+
+
+# Maps parser class names to (account type, institution) for auto-creating
+# Account rows when an import sees an account string with no matching row.
+_PARSER_ACCOUNT_DEFAULTS: dict[str, tuple[str, str]] = {
+    "ChaseCcParser": ("credit_card", "Chase"),
+    "BecuCheckingParser": ("checking", "BECU"),
+}
 
 
 @dataclass
@@ -25,6 +36,40 @@ def _file_hash(filepath: Path) -> str:
         for chunk in iter(lambda: f.read(8192), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _resolve_account_id(
+    db: Session,
+    account_name: str,
+    parser: object,
+    account_cache: dict[str, int],
+) -> int:
+    """Resolve account_id by name; auto-create with parser-derived defaults."""
+    if account_name in account_cache:
+        return account_cache[account_name]
+
+    account = db.query(Account).filter(Account.name == account_name).first()
+    if account is None:
+        parser_cls = parser.__class__.__name__
+        acct_type, institution = _PARSER_ACCOUNT_DEFAULTS.get(parser_cls, ("asset", None))
+        logger.warning(
+            "Auto-creating account row name=%r type=%r institution=%r (parser=%s)",
+            account_name,
+            acct_type,
+            institution,
+            parser_cls,
+        )
+        account = Account(
+            name=account_name,
+            type=acct_type,
+            institution=institution,
+            is_archived=False,
+        )
+        db.add(account)
+        db.flush()  # populate id without committing the outer transaction
+
+    account_cache[account_name] = account.id
+    return account.id
 
 
 def _resolve_category_id(
@@ -79,6 +124,7 @@ def import_file(db: Session, filepath: Path) -> ImportResult:
     imported = 0
     skipped = 0
     category_cache: dict[str, int | None] = {}
+    account_cache: dict[str, int] = {}
 
     for raw in raw_transactions:
         # Check dedup by import_hash
@@ -88,10 +134,11 @@ def import_file(db: Session, filepath: Path) -> ImportResult:
             continue
 
         category_id = _resolve_category_id(db, raw, parser, category_cache)
+        account_id = _resolve_account_id(db, raw.account, parser, account_cache)
 
         txn = Transaction(
             source_file=raw.source_file,
-            account=raw.account,
+            account_id=account_id,
             date=raw.date,
             post_date=raw.post_date,
             raw_description=raw.raw_description,

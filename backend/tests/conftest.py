@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import Category
+from app.models import Account, Category
 
 
 @pytest.fixture
@@ -38,6 +38,59 @@ def client(db: Session) -> Generator[TestClient, None, None]:
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+def get_or_create_account(
+    db: Session,
+    name: str,
+    *,
+    type: str = "asset",
+    institution: str | None = None,
+) -> Account:
+    """Test helper: return account row by name, creating it if absent.
+
+    Used by tests that previously passed ``account="..."`` directly to
+    ``Transaction(...)``. Defaults to ``type="asset"`` for arbitrary
+    placeholder names like "Test"; callers that need a specific type can
+    pass it explicitly.
+    """
+    account = db.query(Account).filter(Account.name == name).first()
+    if account is None:
+        account = Account(name=name, type=type, institution=institution, is_archived=False)
+        db.add(account)
+        db.commit()
+        db.refresh(account)
+    return account
+
+
+@pytest.fixture
+def chase_cc_account(db: Session) -> Account:
+    """Pre-seeded Chase CC account row matching the migration's bulk_insert."""
+    account = Account(
+        name="Chase CC",
+        type="credit_card",
+        institution="Chase",
+        is_archived=False,
+    )
+    db.add(account)
+    db.commit()
+    db.refresh(account)
+    return account
+
+
+@pytest.fixture
+def becu_account(db: Session) -> Account:
+    """Pre-seeded BECU Checking account row matching the migration's bulk_insert."""
+    account = Account(
+        name="BECU Checking",
+        type="checking",
+        institution="BECU",
+        is_archived=False,
+    )
+    db.add(account)
+    db.commit()
+    db.refresh(account)
+    return account
 
 
 @pytest.fixture

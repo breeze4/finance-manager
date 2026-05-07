@@ -20,7 +20,8 @@ def _txn_to_response(txn) -> TransactionResponse:
     return TransactionResponse(
         id=txn.id,
         source_file=txn.source_file,
-        account=txn.account,
+        account_id=txn.account_id,
+        account_name=txn.account.name if txn.account is not None else "",
         date=txn.date,
         post_date=txn.post_date,
         raw_description=txn.raw_description,
@@ -41,7 +42,7 @@ def _txn_to_response(txn) -> TransactionResponse:
 
 @router.get("", response_model=PaginatedTransactions)
 def list_transactions(
-    account: str | None = None,
+    account_id: int | None = None,
     category_id: int | None = None,
     vendor: str | None = None,
     date_from: date | None = None,
@@ -60,7 +61,7 @@ def list_transactions(
 ):
     items, total = transaction_service.list_transactions(
         db,
-        account=account,
+        account_id=account_id,
         category_id=category_id,
         vendor=vendor,
         date_from=date_from,

@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import (
+    Account,
     Budget,
     BudgetMonthlyOverride,
     Category,
@@ -15,6 +16,14 @@ from app.models import (
     Subscription,
     Transaction,
 )
+
+
+def _make_account(db: Session, name: str = "Chase CC", type: str = "credit_card") -> Account:
+    account = Account(name=name, type=type, institution=None, is_archived=False)
+    db.add(account)
+    db.commit()
+    db.refresh(account)
+    return account
 
 
 def _seed_categories(db: Session) -> list[Category]:
@@ -68,10 +77,11 @@ class TestTransactionModel:
         cat = Category(name="Groceries", is_system=True)
         db.add(cat)
         db.commit()
+        account = _make_account(db)
 
         txn = Transaction(
             source_file="test.csv",
-            account="Chase CC",
+            account_id=account.id,
             date=date(2025, 6, 15),
             raw_description="FRED MEYER #1234",
             vendor="Fred Meyer",
@@ -83,15 +93,17 @@ class TestTransactionModel:
         db.commit()
 
         assert txn.id is not None
+        assert txn.account.name == "Chase CC"
         assert txn.category.name == "Groceries"
         assert txn.is_verified is False
         assert txn.is_transfer is False
         assert txn.is_reviewed is False
 
     def test_import_hash_unique(self, db: Session):
+        account = _make_account(db)
         base = dict(
             source_file="test.csv",
-            account="Chase CC",
+            account_id=account.id,
             date=date(2025, 1, 1),
             raw_description="desc",
             vendor="V",
@@ -108,10 +120,11 @@ class TestTransactionModel:
         cat = Category(name="Dining", is_system=True)
         db.add(cat)
         db.commit()
+        account = _make_account(db, name="A", type="asset")
 
         txn = Transaction(
             source_file="f.csv",
-            account="A",
+            account_id=account.id,
             date=date(2025, 1, 1),
             raw_description="r",
             vendor="v",
@@ -148,9 +161,11 @@ class TestClassificationRuleModel:
 
 class TestPaymentMatchModel:
     def test_create_match(self, db: Session):
+        becu = _make_account(db, name="BECU", type="checking")
+        chase = _make_account(db, name="Chase CC", type="credit_card")
         base = dict(source_file="f.csv", date=date(2025, 1, 1), raw_description="r", vendor="v")
-        t1 = Transaction(**base, account="BECU", amount=-500.0, import_hash="h1")
-        t2 = Transaction(**base, account="Chase CC", amount=500.0, import_hash="h2")
+        t1 = Transaction(**base, account_id=becu.id, amount=-500.0, import_hash="h1")
+        t2 = Transaction(**base, account_id=chase.id, amount=500.0, import_hash="h2")
         db.add_all([t1, t2])
         db.commit()
 
@@ -253,6 +268,7 @@ class TestMigrationAppliesCleanly:
         inspector = inspect(db.bind)
         tables = set(inspector.get_table_names())
         expected = {
+            "accounts",
             "categories",
             "transactions",
             "classification_rules",

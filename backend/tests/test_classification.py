@@ -11,9 +11,10 @@ from app.services.classification_service import find_matching_rule
 
 
 def _make_txn(db: Session, **overrides) -> Transaction:
+    from tests.conftest import get_or_create_account
+
     defaults = {
         "source_file": "test.csv",
-        "account": "Chase CC",
         "date": date(2025, 6, 15),
         "raw_description": "TEST",
         "vendor": "Test Vendor",
@@ -22,6 +23,9 @@ def _make_txn(db: Session, **overrides) -> Transaction:
         "is_transfer": False,
         "is_verified": False,
     }
+    account_name = overrides.pop("account", None) or "Chase CC"
+    account = get_or_create_account(db, account_name, type="credit_card", institution="Chase")
+    defaults["account_id"] = account.id
     defaults.update(overrides)
     if defaults["import_hash"] is None:
         defaults["import_hash"] = f"hash_{id(defaults)}_{defaults['vendor']}_{defaults['amount']}"
@@ -39,12 +43,10 @@ class TestRuleMatchPrecedence:
         gid = seed_categories["Groceries"]
         did = seed_categories["Dining"]
 
-        db.add(ClassificationRule(
-            vendor_pattern="Fred Meyer", match_type="contains", category_id=did
-        ))
-        db.add(ClassificationRule(
-            vendor_pattern="Fred Meyer", match_type="exact", category_id=gid
-        ))
+        db.add(
+            ClassificationRule(vendor_pattern="Fred Meyer", match_type="contains", category_id=did)
+        )
+        db.add(ClassificationRule(vendor_pattern="Fred Meyer", match_type="exact", category_id=gid))
         db.commit()
 
         rule = find_matching_rule(db, "Fred Meyer")
@@ -56,12 +58,8 @@ class TestRuleMatchPrecedence:
         gid = seed_categories["Groceries"]
         did = seed_categories["Dining"]
 
-        db.add(ClassificationRule(
-            vendor_pattern="Fred", match_type="starts_with", category_id=did
-        ))
-        db.add(ClassificationRule(
-            vendor_pattern="Fred Meyer", match_type="exact", category_id=gid
-        ))
+        db.add(ClassificationRule(vendor_pattern="Fred", match_type="starts_with", category_id=did))
+        db.add(ClassificationRule(vendor_pattern="Fred Meyer", match_type="exact", category_id=gid))
         db.commit()
 
         rule = find_matching_rule(db, "Fred Meyer")
@@ -72,12 +70,8 @@ class TestRuleMatchPrecedence:
         gid = seed_categories["Groceries"]
         did = seed_categories["Dining"]
 
-        db.add(ClassificationRule(
-            vendor_pattern="Meyer", match_type="contains", category_id=did
-        ))
-        db.add(ClassificationRule(
-            vendor_pattern="Fred", match_type="starts_with", category_id=gid
-        ))
+        db.add(ClassificationRule(vendor_pattern="Meyer", match_type="contains", category_id=did))
+        db.add(ClassificationRule(vendor_pattern="Fred", match_type="starts_with", category_id=gid))
         db.commit()
 
         rule = find_matching_rule(db, "Fred Meyer")
@@ -88,12 +82,16 @@ class TestRuleMatchPrecedence:
         gid = seed_categories["Groceries"]
         did = seed_categories["Dining"]
 
-        db.add(ClassificationRule(
-            vendor_pattern="Fred Meyer", match_type="exact", category_id=did, priority=0
-        ))
-        db.add(ClassificationRule(
-            vendor_pattern="Fred Meyer", match_type="exact", category_id=gid, priority=10
-        ))
+        db.add(
+            ClassificationRule(
+                vendor_pattern="Fred Meyer", match_type="exact", category_id=did, priority=0
+            )
+        )
+        db.add(
+            ClassificationRule(
+                vendor_pattern="Fred Meyer", match_type="exact", category_id=gid, priority=10
+            )
+        )
         db.commit()
 
         rule = find_matching_rule(db, "Fred Meyer")
@@ -101,9 +99,7 @@ class TestRuleMatchPrecedence:
 
     def test_case_insensitive_matching(self, db: Session, seed_categories):
         gid = seed_categories["Groceries"]
-        db.add(ClassificationRule(
-            vendor_pattern="fred meyer", match_type="exact", category_id=gid
-        ))
+        db.add(ClassificationRule(vendor_pattern="fred meyer", match_type="exact", category_id=gid))
         db.commit()
 
         rule = find_matching_rule(db, "Fred Meyer")
@@ -166,9 +162,7 @@ class TestRetroactiveApply:
         t2 = _make_txn(db, vendor="Fred Meyer", is_verified=False, import_hash="ra2")
         t3 = _make_txn(db, vendor="Safeway", is_verified=False, import_hash="ra3")
 
-        rule = ClassificationRule(
-            vendor_pattern="Fred Meyer", match_type="exact", category_id=gid
-        )
+        rule = ClassificationRule(vendor_pattern="Fred Meyer", match_type="exact", category_id=gid)
         db.add(rule)
         db.commit()
         db.refresh(rule)
@@ -187,14 +181,10 @@ class TestRetroactiveApply:
     def test_apply_skips_verified(self, client: TestClient, db: Session, seed_categories):
         gid = seed_categories["Groceries"]
         did = seed_categories["Dining"]
-        _make_txn(
-            db, vendor="Fred Meyer", is_verified=True, category_id=did, import_hash="rv1"
-        )
+        _make_txn(db, vendor="Fred Meyer", is_verified=True, category_id=did, import_hash="rv1")
         _make_txn(db, vendor="Fred Meyer", is_verified=False, import_hash="rv2")
 
-        rule = ClassificationRule(
-            vendor_pattern="Fred Meyer", match_type="exact", category_id=gid
-        )
+        rule = ClassificationRule(vendor_pattern="Fred Meyer", match_type="exact", category_id=gid)
         db.add(rule)
         db.commit()
         db.refresh(rule)
@@ -210,12 +200,8 @@ class TestRetroactiveApply:
         _make_txn(db, vendor="Fred Meyer", is_verified=False, import_hash="aa1")
         _make_txn(db, vendor="Safeway", is_verified=False, import_hash="aa2")
 
-        db.add(ClassificationRule(
-            vendor_pattern="Fred Meyer", match_type="exact", category_id=gid
-        ))
-        db.add(ClassificationRule(
-            vendor_pattern="Safeway", match_type="exact", category_id=did
-        ))
+        db.add(ClassificationRule(vendor_pattern="Fred Meyer", match_type="exact", category_id=gid))
+        db.add(ClassificationRule(vendor_pattern="Safeway", match_type="exact", category_id=did))
         db.commit()
 
         resp = client.post("/api/rules/apply-all")
@@ -286,9 +272,7 @@ class TestBulkClassifyCreatesRules:
 class TestRulesCRUD:
     def test_list_rules(self, client: TestClient, db: Session, seed_categories):
         gid = seed_categories["Groceries"]
-        db.add(ClassificationRule(
-            vendor_pattern="Fred Meyer", match_type="exact", category_id=gid
-        ))
+        db.add(ClassificationRule(vendor_pattern="Fred Meyer", match_type="exact", category_id=gid))
         db.commit()
 
         resp = client.get("/api/rules")
@@ -300,27 +284,31 @@ class TestRulesCRUD:
 
     def test_create_rule(self, client: TestClient, seed_categories):
         gid = seed_categories["Groceries"]
-        resp = client.post("/api/rules", json={
-            "vendor_pattern": "Fred Meyer",
-            "match_type": "exact",
-            "category_id": gid,
-        })
+        resp = client.post(
+            "/api/rules",
+            json={
+                "vendor_pattern": "Fred Meyer",
+                "match_type": "exact",
+                "category_id": gid,
+            },
+        )
         assert resp.status_code == 201
         assert resp.json()["vendor_pattern"] == "Fred Meyer"
 
     def test_create_invalid_match_type(self, client: TestClient):
-        resp = client.post("/api/rules", json={
-            "vendor_pattern": "Fred Meyer",
-            "match_type": "regex",
-        })
+        resp = client.post(
+            "/api/rules",
+            json={
+                "vendor_pattern": "Fred Meyer",
+                "match_type": "regex",
+            },
+        )
         assert resp.status_code == 400
 
     def test_update_rule(self, client: TestClient, db: Session, seed_categories):
         gid = seed_categories["Groceries"]
         did = seed_categories["Dining"]
-        rule = ClassificationRule(
-            vendor_pattern="Fred Meyer", match_type="exact", category_id=gid
-        )
+        rule = ClassificationRule(vendor_pattern="Fred Meyer", match_type="exact", category_id=gid)
         db.add(rule)
         db.commit()
         db.refresh(rule)
@@ -331,9 +319,7 @@ class TestRulesCRUD:
 
     def test_delete_rule(self, client: TestClient, db: Session, seed_categories):
         gid = seed_categories["Groceries"]
-        rule = ClassificationRule(
-            vendor_pattern="Fred Meyer", match_type="exact", category_id=gid
-        )
+        rule = ClassificationRule(vendor_pattern="Fred Meyer", match_type="exact", category_id=gid)
         db.add(rule)
         db.commit()
         db.refresh(rule)
@@ -357,14 +343,18 @@ class TestReimportAppliesRules:
         gid = seed_categories["Groceries"]
 
         # Create a rule
-        db.add(ClassificationRule(
-            vendor_pattern="Fred-Meyer", match_type="exact", category_id=gid
-        ))
+        db.add(ClassificationRule(vendor_pattern="Fred-Meyer", match_type="exact", category_id=gid))
         db.commit()
 
         # Import a file with Fred Meyer
         header = [
-            "Transaction Date", "Post Date", "Description", "Category", "Type", "Amount", "Memo"
+            "Transaction Date",
+            "Post Date",
+            "Description",
+            "Category",
+            "Type",
+            "Amount",
+            "Memo",
         ]
         rows = [
             ["01/15/2025", "01/16/2025", "FRED-MEYER #0013", "Shopping", "Sale", "-45.67", ""],

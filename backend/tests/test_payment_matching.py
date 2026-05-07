@@ -11,9 +11,22 @@ from app.services.payment_service import detect_payments, list_matches, unmatch
 
 def _seed_categories(db: Session) -> dict[str, int]:
     names = [
-        "Shopping", "Groceries", "Dining", "Health & Wellness", "Entertainment",
-        "Bills & Utilities", "Travel", "Gas", "Education", "Personal", "Home",
-        "Gifts & Donations", "Income", "Investments", "Transfers", "Uncategorized",
+        "Shopping",
+        "Groceries",
+        "Dining",
+        "Health & Wellness",
+        "Entertainment",
+        "Bills & Utilities",
+        "Travel",
+        "Gas",
+        "Education",
+        "Personal",
+        "Home",
+        "Gifts & Donations",
+        "Income",
+        "Investments",
+        "Transfers",
+        "Uncategorized",
     ]
     for n in names:
         db.add(Category(name=n, is_system=True))
@@ -22,11 +35,14 @@ def _seed_categories(db: Session) -> dict[str, int]:
 
 
 def _make_becu_txn(db: Session, *, amount: float, txn_date: date, **overrides) -> Transaction:
+    from tests.conftest import get_or_create_account
+
+    becu = get_or_create_account(db, "BECU Checking", type="checking", institution="BECU")
     defaults = {
         "source_file": "becu.csv",
-        "account": "BECU Checking",
+        "account_id": becu.id,
         "date": txn_date,
-        "raw_description": f"External Withdrawal - CHASE CREDIT CRD  - EPAY",
+        "raw_description": "External Withdrawal - CHASE CREDIT CRD  - EPAY",
         "vendor": "Chase Credit Crd",
         "amount": amount,
         "import_hash": None,
@@ -43,9 +59,12 @@ def _make_becu_txn(db: Session, *, amount: float, txn_date: date, **overrides) -
 
 
 def _make_chase_payment(db: Session, *, amount: float, txn_date: date, **overrides) -> Transaction:
+    from tests.conftest import get_or_create_account
+
+    chase = get_or_create_account(db, "Chase CC", type="credit_card", institution="Chase")
     defaults = {
         "source_file": "chase.csv",
-        "account": "Chase CC",
+        "account_id": chase.id,
         "date": txn_date,
         "raw_description": "Payment Thank You-Mobile",
         "vendor": "Payment Thank You-Mobile",
@@ -112,8 +131,8 @@ class TestDetectPayments:
 
     def test_date_at_boundary_matches(self, db: Session):
         """Dates exactly 3 days apart should match."""
-        becu = _make_becu_txn(db, amount=-500.00, txn_date=date(2025, 1, 15))
-        chase = _make_chase_payment(db, amount=500.00, txn_date=date(2025, 1, 18))
+        _make_becu_txn(db, amount=-500.00, txn_date=date(2025, 1, 15))
+        _make_chase_payment(db, amount=500.00, txn_date=date(2025, 1, 18))
 
         result = detect_payments(db)
         assert result.matches_found == 1
@@ -133,15 +152,15 @@ class TestDetectPayments:
 
     def test_multiple_matches(self, db: Session):
         """Multiple payments should each match independently."""
-        _make_becu_txn(db, amount=-500.00, txn_date=date(2025, 1, 15),
-                       import_hash="becu_500_jan")
-        _make_chase_payment(db, amount=500.00, txn_date=date(2025, 1, 15),
-                            import_hash="chase_500_jan")
+        _make_becu_txn(db, amount=-500.00, txn_date=date(2025, 1, 15), import_hash="becu_500_jan")
+        _make_chase_payment(
+            db, amount=500.00, txn_date=date(2025, 1, 15), import_hash="chase_500_jan"
+        )
 
-        _make_becu_txn(db, amount=-1000.00, txn_date=date(2025, 2, 15),
-                       import_hash="becu_1000_feb")
-        _make_chase_payment(db, amount=1000.00, txn_date=date(2025, 2, 15),
-                            import_hash="chase_1000_feb")
+        _make_becu_txn(db, amount=-1000.00, txn_date=date(2025, 2, 15), import_hash="becu_1000_feb")
+        _make_chase_payment(
+            db, amount=1000.00, txn_date=date(2025, 2, 15), import_hash="chase_1000_feb"
+        )
 
         result = detect_payments(db)
         assert result.matches_found == 2
@@ -149,11 +168,14 @@ class TestDetectPayments:
 
     def test_non_payment_chase_txn_not_matched(self, db: Session):
         """Chase transactions with type != 'Payment' should not be candidates."""
+        from tests.conftest import get_or_create_account
+
         _make_becu_txn(db, amount=-50.00, txn_date=date(2025, 1, 15))
+        chase = get_or_create_account(db, "Chase CC", type="credit_card", institution="Chase")
         # A sale, not a payment
         txn = Transaction(
             source_file="chase.csv",
-            account="Chase CC",
+            account_id=chase.id,
             date=date(2025, 1, 15),
             raw_description="Some Store",
             vendor="Some Store",
@@ -170,9 +192,12 @@ class TestDetectPayments:
 
     def test_non_chase_becu_txn_not_matched(self, db: Session):
         """BECU transactions without 'CHASE CREDIT CRD' should not be candidates."""
+        from tests.conftest import get_or_create_account
+
+        becu = get_or_create_account(db, "BECU Checking", type="checking", institution="BECU")
         txn = Transaction(
             source_file="becu.csv",
-            account="BECU Checking",
+            account_id=becu.id,
             date=date(2025, 1, 15),
             raw_description="External Withdrawal - SOME OTHER - EPAY",
             vendor="Some Other",
@@ -254,7 +279,7 @@ class TestPaymentAPI:
         assert data["total_matches"] == 1
 
     def test_list_endpoint(self, client: TestClient, db: Session):
-        becu = _make_becu_txn(db, amount=-500.00, txn_date=date(2025, 1, 15))
+        _make_becu_txn(db, amount=-500.00, txn_date=date(2025, 1, 15))
         _make_chase_payment(db, amount=500.00, txn_date=date(2025, 1, 15))
 
         client.post("/api/payments/detect")
@@ -263,8 +288,8 @@ class TestPaymentAPI:
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
-        assert data[0]["checking_transaction"]["account"] == "BECU Checking"
-        assert data[0]["cc_transaction"]["account"] == "Chase CC"
+        assert data[0]["checking_transaction"]["account_name"] == "BECU Checking"
+        assert data[0]["cc_transaction"]["account_name"] == "Chase CC"
         assert data[0]["checking_transaction"]["amount"] == -500.00
         assert data[0]["cc_transaction"]["amount"] == 500.00
 
@@ -320,6 +345,7 @@ class TestPaymentMatchingIntegration:
 
         # Get spending total before detection
         from sqlalchemy import func
+
         spending_before = (
             db.query(func.sum(Transaction.amount))
             .filter(Transaction.amount < 0, Transaction.is_transfer == False)  # noqa: E712
