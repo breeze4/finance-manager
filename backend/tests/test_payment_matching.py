@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models import Category, PaymentMatch, Transaction
-from app.services.import_service import import_all
+from app.services.ingestion import build_ingestion
 from app.services.payment_service import detect_payments, list_matches, unmatch
 
 
@@ -314,15 +314,19 @@ class TestPaymentAPI:
 
 class TestPaymentMatchingIntegration:
     def test_import_real_csvs_and_detect(self, db: Session):
-        """Import real CSVs and detect the $9,379.99 payment match."""
+        """Import real CSVs and detect the $9,379.99 payment match.
+
+        Ingestion now folds payment detection into ``ingest()``; the report
+        carries the totals.
+        """
         _seed_categories(db)
         input_dir = Path(__file__).resolve().parent.parent.parent / "input"
         if not input_dir.is_dir():
             return
 
-        import_all(db, input_dir)
-        result = detect_payments(db)
-        assert result.matches_found > 0
+        report = build_ingestion(db).ingest(input_dir)
+        assert report.matches_found > 0
+        assert report.total_matches > 0
 
         # Check for the $9,379.99 match (BECU 12/26 <-> Chase 12/25)
         matches = list_matches(db)
@@ -335,32 +339,30 @@ class TestPaymentMatchingIntegration:
             assert m.cc_transaction.is_transfer is True
 
     def test_stats_exclude_transfers_after_detection(self, db: Session):
-        """After detection, stats spending total should exclude matched transfers."""
+        """After detection (which now happens inside ingest), spending totals
+        excluding transfers should be smaller in magnitude than totals
+        including all negative transactions."""
         _seed_categories(db)
         input_dir = Path(__file__).resolve().parent.parent.parent / "input"
         if not input_dir.is_dir():
             return
 
-        import_all(db, input_dir)
+        build_ingestion(db).ingest(input_dir)
 
-        # Get spending total before detection
         from sqlalchemy import func
 
-        spending_before = (
+        # All negative-amount rows, including matched transfers.
+        spending_including_transfers = (
+            db.query(func.sum(Transaction.amount)).filter(Transaction.amount < 0).scalar()
+        ) or 0
+
+        # Negative-amount rows excluding matched transfers.
+        spending_excluding_transfers = (
             db.query(func.sum(Transaction.amount))
             .filter(Transaction.amount < 0, Transaction.is_transfer == False)  # noqa: E712
             .scalar()
         ) or 0
 
-        detect_payments(db)
-
-        # Get spending total after detection
-        spending_after = (
-            db.query(func.sum(Transaction.amount))
-            .filter(Transaction.amount < 0, Transaction.is_transfer == False)  # noqa: E712
-            .scalar()
-        ) or 0
-
-        # Spending should be less negative after transfers are excluded
-        # (matched BECU debits are no longer counted as spending)
-        assert spending_after > spending_before
+        # At least one transfer must have been matched, so excluding transfers
+        # produces a less-negative (i.e. larger) sum.
+        assert spending_excluding_transfers > spending_including_transfers
