@@ -338,7 +338,7 @@ class TestReimportAppliesRules:
     """After classifying, re-importing new data applies the rule."""
 
     def test_reimport_uses_rule(self, client: TestClient, db: Session, seed_categories):
-        from app.services.import_service import import_file
+        from app.services.ingestion import build_ingestion
 
         gid = seed_categories["Groceries"]
 
@@ -366,8 +366,8 @@ class TestReimportAppliesRules:
             writer.writerow(row)
         f.close()
 
-        result = import_file(db, Path(f.name))
-        assert result.rows_imported == 1
+        report = build_ingestion(db).ingest(Path(f.name))
+        assert report.files[0].rows_imported == 1
 
         # The imported transaction should have the rule's category
         txn = db.query(Transaction).filter(Transaction.vendor == "Fred-Meyer").first()

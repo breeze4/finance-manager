@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Category, Transaction
 from app.services.budget_service import get_budget_suggestions
-from app.services.import_service import import_all
+from app.services.ingestion import build_ingestion
 
 
 def _seed_categories(db: Session) -> dict[str, int]:
@@ -256,7 +256,7 @@ class TestBudgetSuggestionsIntegration:
         if not input_dir.is_dir():
             return
 
-        import_all(db, input_dir)
+        build_ingestion(db).ingest(input_dir)
         suggestions = get_budget_suggestions(db, year=2026)
 
         assert len(suggestions) > 0

@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models import Category, Transaction
-from app.services.import_service import import_all
+from app.services.ingestion import build_ingestion
 from app.services.subscription_service import detect_subscriptions, list_subscriptions
 
 
@@ -363,7 +363,7 @@ class TestSubscriptionIntegration:
         if not input_dir.is_dir():
             return
 
-        import_all(db, input_dir)
+        build_ingestion(db).ingest(input_dir)
         result = detect_subscriptions(db)
         assert result.subscriptions_found > 0
 
@@ -407,7 +407,7 @@ class TestSubscriptionIntegration:
         if not input_dir.is_dir():
             return
 
-        import_all(db, input_dir)
+        build_ingestion(db).ingest(input_dir)
         detect_subscriptions(db)
         subs = list_subscriptions(db)
 

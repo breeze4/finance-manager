@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.models import Category, Subscription, Transaction
 from app.services.forecast.registry import available_methods, get_forecaster
 from app.services.forecast.simple import SimpleForecaster
-from app.services.import_service import import_all
+from app.services.ingestion import build_ingestion
 
 
 def _seed_categories(db: Session) -> dict[str, int]:
@@ -343,7 +343,7 @@ class TestForecastIntegration:
         if not input_dir.is_dir():
             return
 
-        import_all(db, input_dir)
+        build_ingestion(db).ingest(input_dir)
         forecaster = get_forecaster("simple")
         result = forecaster.forecast(db, 2026)
 
