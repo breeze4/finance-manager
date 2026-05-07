@@ -2,7 +2,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { Layout } from "@/components/Layout";
-import Home from "@/pages/Home";
+import Overview from "@/pages/Overview";
 import Transactions from "@/pages/Transactions";
 import Subscriptions from "@/pages/Subscriptions";
 import Budget from "@/pages/Budget";
@@ -22,7 +22,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
-            <Route path="/" element={<Home />} />
+            <Route path="/" element={<Overview />} />
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/subscriptions" element={<Subscriptions />} />
             <Route path="/budget" element={<Budget />} />

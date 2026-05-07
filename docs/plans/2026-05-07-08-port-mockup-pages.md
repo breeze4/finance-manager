@@ -148,4 +148,36 @@ Definition of done: production frontend has all six mockup pages live against re
 
 ## Review
 
-_Filled in after implementation per `CLAUDE.md` §Task Management._
+End-to-end summary:
+
+- **Phase 0 (deps + primitives)**: 14 Radix/shadcn primitive files copied byte-for-byte from `mockup/src/components/ui/` plus `use-toast.ts` hook; 14 deps added to `frontend/package.json` at the same versions as `mockup/package.json`.
+- **Phase 1 (shared infra)**: `frontend/src/lib/format.ts` and `frontend/src/api/_client.ts` extracted; the four pre-existing API clients now re-import from `_client.ts`. `vite.config.ts` proxy already correct, no edit.
+- **Phase 2 (Overview)**: `Home.tsx` deleted, `Overview.tsx` ported with three queries — summary, monthly, top-vendors. Top-vendors computed client-side from a 200-row transactions fetch.
+- **Phase 3 (Subscriptions)**: Page wired to `GET /api/subscriptions` with two tabs partitioned client-side on `subscription_type`. Re-detect button fires `POST /detect`.
+- **Phase 4 (Payments)**: Matched + unmatched-candidates tables. Candidates derived client-side from a `is_transfer=false` fetch using `raw_description` and `type='Payment'` predicates (backend list endpoint doesn't expose those filters).
+- **Phase 5 (Transactions)**: Largest shape change. Adapter in `transactions.ts` flips snake_case→camelCase; canonical `Transaction` type now used everywhere. Migrated `Overview.tsx` and `Payments.tsx` call-sites in the same step. `id` is `number` (not string).
+- **Phase 6 (Forecast)**: Two-series (`actualTotal` / `projectedTotal`) line chart driven off backend `status` field. Method picker hidden until `>1` method registered. Added a top-categories-by-year table (mockup's monthly YoY bars couldn't be reproduced without a backend change).
+- **Phase 7 (Budget)**: 1.4k-line page with four tabs. `BudgetState` adapter flattens server's per-month overrides into `Record<"YYYY-MM", number>`. Suggest-budgets fans out parallel `setBudget`/`setMonthlyOverride` calls. Drilldown queries `/api/transactions` per category-month.
+
+Surprises worth knowing for next port:
+
+- **Backend gap (Phase 2)**: no `/api/stats/top-vendors` endpoint and no monthly income on `/api/stats/monthly`. Both worked around with a 200-row transactions fetch. If dataset grows, add a dedicated endpoint.
+- **Phase 2 also**: `/api/stats/summary` has only one date range, so the "vs last month" pct-change card sub-line was dropped.
+- **Subscriptions sparkline (Phase 3)**: Backend has no per-vendor history series; trend column dropped rather than running a per-row history fetch.
+- **Payments shape (Phase 4)**: Page kept local snake_case `EmbeddedTransaction` type rather than depending on the not-yet-finalised camelCase `Transaction` from `transactions.ts`.
+- **Transactions migration (Phase 5)**: `id` moved string→number across the page and `selectedRows` state. Full camelCase migration of `Overview.tsx` and `Payments.tsx` call-sites; `PaymentMatchResponse.checking_transaction.*` access stays snake_case (different API client).
+- **Transactions filters (Phase 5)**: "Unclassified" maps to `is_reviewed=false` (not `category_id IS NULL`) — closest server filter; slight overshoot for users who manually unreviewed rows.
+- **Forecast status enum (Phase 6)**: Backend has **three** values — `actual`, `partial`, `projected` — not two. `partial` is the current month; treating it as both series in the chart eliminates the gap.
+- **Forecast YoY (Phase 6)**: Pydantic int dict keys serialise as strings on the wire; adapter coerces with `Number(k)`. Added a top-categories-by-year table because `/yoy` returns annual-only totals and the mockup's monthly grouped bars would have needed a different endpoint.
+- **Budget Flex grouping (Phase 7)**: Derived client-side via `classifyBucket(stat)` from `seasonalMonths.length > 0` (non-monthly) and `coefficientOfVariation <= 0.15` (fixed). 0.15 is editorial; backend has no fixed/flex/non-monthly classification.
+- **Budget drops (Phase 7)**: Mockup's hard-coded `monthlyIncome = 7700` dropped; Flex tab now shows "flexible spending remaining" (`flexBudget − flexSpent`) instead of income-minus-everything. `targetPeriod` toggle and `unlockedMonths` concept dropped — backend stores monthly only.
+- **Budget rollover math (Phase 7)**: Server-side via `entry.budgetTarget`. Mockup's client-side `getRolloverBudget` removed; carry-forward annotation is display-only.
+
+Carry-forward / followups:
+
+- If transaction history grows past ~200 rows for a recent period, add a backend `/api/stats/top-vendors` endpoint and drop Overview's transactions fetch.
+- Spending+income per month on `/api/stats/monthly` would let Overview drop the transactions fetch entirely.
+- A `category_id IS NULL` filter on `/api/transactions` would tighten Transactions' "Unclassified" semantics.
+- Subscription per-vendor history endpoint would let the sparkline trend column return.
+- `category_id` flexibility classification on the backend would let the Budget Flex tab drop `classifyBucket` and the editorial 0.15 CoV threshold.
+- Manual-match endpoint for Payments would let the Unmatched Candidates table get a per-row "Match" action back.

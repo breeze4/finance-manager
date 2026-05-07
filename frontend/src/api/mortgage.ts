@@ -7,6 +7,10 @@
  * (notably `useActiveScenario`) can swallow 404s as "no scenario yet".
  */
 
+import { request } from "./_client";
+
+export { ApiError } from "./_client";
+
 const BASE = "/api/calculators/mortgage/scenarios";
 
 export interface MortgageScenario {
@@ -38,39 +42,6 @@ export interface MortgageScenarioCreate {
 }
 
 export type MortgageScenarioUpdate = Partial<MortgageScenarioCreate>;
-
-export class ApiError extends Error {
-  status: number;
-  constructor(status: number, message: string) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-  }
-}
-
-async function request<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
-  const resp = await fetch(input, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {})
-    }
-  });
-  if (!resp.ok) {
-    let detail = resp.statusText;
-    try {
-      const body = await resp.json();
-      if (body?.detail) detail = body.detail;
-    } catch {
-      // keep statusText
-    }
-    throw new ApiError(resp.status, detail);
-  }
-  if (resp.status === 204) {
-    return undefined as T;
-  }
-  return (await resp.json()) as T;
-}
 
 export function listScenarios(): Promise<MortgageScenario[]> {
   return request<MortgageScenario[]>(BASE);
