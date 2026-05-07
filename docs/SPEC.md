@@ -223,11 +223,13 @@ Collapsible sidebar with icon-only collapsed state. Sidebar items have tooltips 
 
 Pages:
 1. **Overview** — Dashboard with summary cards and key charts
-2. **Transactions** — Full transaction list with sorting, filtering, grouping
-3. **Subscriptions** — Detected recurring charges, fixed and variable
-4. **Budget** — Category budgets, actual vs. target, trends
-5. **Forecast** — Projections and comparisons
-6. **Payments** — Inter-account transfer/payment matching view
+2. **Net Worth** — Net worth over time (line chart) and latest-balance table per account
+3. **Transactions** — Full transaction list with sorting, filtering, grouping
+4. **Subscriptions** — Detected recurring charges, fixed and variable
+5. **Budget** — Category budgets, actual vs. target, trends
+6. **Forecast** — Projections and comparisons
+7. **Payments** — Inter-account transfer/payment matching view
+8. **Accounts** — CRUD for the accounts list (archive primary action)
 
 ### Global Filters
 
@@ -297,6 +299,20 @@ Clicking a segment in any chart (a bar, a donut slice, a Sankey flow) filters th
 - Per-account detail views: each account has its own transaction list
 - Cross-account matching for payments/transfers
 
+## Accounts & Net Worth
+
+Account is a first-class model — every transaction and balance snapshot references an `accounts` row by FK. Each account has a `type` (`checking`, `savings`, `credit_card`, `brokerage`, `retirement`, `asset`), an optional `institution`, and an `is_archived` flag. The `asset` type is a freeform catch-all whose descriptor lives in the `name` field ("Primary House", "2019 Camry").
+
+### Balance Snapshots
+
+Per-account balance entries stored in `balance_snapshots` keyed by `(account_id, as_of_date)`. Manually entered for v1 — the user opens a "Snapshot today" batch form on the Net Worth page, the form lists every active account with a dollar input and a hint showing the last-known balance, the user fills in whatever they care to and saves. Re-entering for the same `(account, date)` overwrites; there is no per-snapshot edit/delete UI. Balances are stored as positive numbers; sign comes from `accounts.type` at aggregation time (`credit_card` subtracts, others add).
+
+### Net Worth View
+
+Single line chart of net worth over time plus a table of latest balance per account. Net worth on date D is the sum across non-archived accounts of each account's last-value-carry-forward balance as of D, with the type-driven sign rule applied.
+
+CSV import for snapshots is deferred — the v1 path is manual entry only. See `docs/specs/2026-05-06-02-balance-snapshots.md` for the full spec.
+
 ## Visual Design
 
 Dark-first theme with a teal primary color. Key conventions:
@@ -309,9 +325,11 @@ Dark-first theme with a teal primary color. Key conventions:
 
 ## Future Iterations (Not V1)
 
-- Balance tracking over time per account
-- Investment value tracking
-- Net worth tracking
+- Investment value tracking (per-position holdings, allocation breakdown)
+- CSV import for balance snapshots (institution-native holdings exports)
+- Liability account types (loan, mortgage)
+- Per-account history drill-down view; net-worth breakdown by type
+- Per-snapshot edit/delete UI
 - Config-driven CSV parser (add formats via YAML/JSON without code)
 - Upload UI for CSVs
 - Multi-user support
