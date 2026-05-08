@@ -11,7 +11,7 @@
  * vendor is often re-expanded in a session.
  */
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronDown, ChevronRight, Search } from "lucide-react";
 
@@ -33,6 +33,7 @@ import {
   type Transaction,
 } from "@/api/transactions";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { useGlobalFilters } from "@/hooks/useGlobalFilters";
 
 const PAGE_SIZE = 25;
 const ALL = "All";
@@ -146,6 +147,11 @@ export default function Transactions() {
   const [filters, setFilters] = useState<FilterState>(INITIAL_FILTERS);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const { accountId } = useGlobalFilters();
+
+  useEffect(() => {
+    setFilters((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
+  }, [accountId]);
 
   const categoriesQ = useQuery({
     queryKey: ["categories"],
@@ -157,13 +163,14 @@ export default function Transactions() {
     const params = categoryQueryParam(filters.category, categoryList);
     return {
       ...params,
+      accountId: accountId ?? undefined,
       search: filters.search.trim() || undefined,
       page: filters.page,
       pageSize: PAGE_SIZE,
       sortBy: filters.sortBy,
       sortDir: filters.sortDir,
     };
-  }, [filters, categoryList]);
+  }, [filters, categoryList, accountId]);
 
   const toggleSort = (key: SortKey) => {
     setFilters((prev) => {
@@ -178,6 +185,18 @@ export default function Transactions() {
     queryKey: ["transactions", "list", queryParams],
     queryFn: () => listTransactions(queryParams),
   });
+
+  const unclassifiedQ = useQuery({
+    queryKey: ["transactions", "unclassified-count", accountId],
+    queryFn: () =>
+      listTransactions({
+        accountId: accountId ?? undefined,
+        isUncategorized: true,
+        page: 1,
+        pageSize: 1,
+      }),
+  });
+  const unclassifiedCount = unclassifiedQ.data?.total ?? 0;
 
   const updateM = useMutation({
     mutationFn: ({ id, categoryId }: { id: number; categoryId: number | null }) =>
@@ -199,10 +218,6 @@ export default function Transactions() {
   const items: Transaction[] = txnsQ.data?.items ?? [];
   const total = txnsQ.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const unclassifiedCount = useMemo(
-    () => items.filter((t) => !t.category).length,
-    [items]
-  );
 
   const toggleSelect = (id: number) => {
     setSelectedRows((prev) => {
@@ -282,7 +297,7 @@ export default function Transactions() {
               setFilters((prev) => ({ ...prev, category: UNCLASSIFIED, page: 1 }))
             }
           >
-            {unclassifiedCount} unclassified on page
+            {unclassifiedCount} unclassified
           </Badge>
         )}
         {selectedRows.size > 0 && (

@@ -1,4 +1,5 @@
 import { useLocation } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import {
   Select,
@@ -7,6 +8,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { listAccounts } from "@/api/accounts";
+import { useGlobalFilters } from "@/hooks/useGlobalFilters";
 
 const dateRanges = [
   "This Month",
@@ -16,7 +19,7 @@ const dateRanges = [
   "All Time",
 ];
 
-const accountOptions = ["All Accounts", "Chase CC 7397", "BECU Checking"];
+const ALL_ACCOUNTS = "__all__";
 
 interface TopBarProps {
   title: string;
@@ -27,6 +30,15 @@ export function TopBar({ title }: TopBarProps) {
   const isCalculatorRoute =
     location.pathname.startsWith("/coast-fire") ||
     location.pathname.startsWith("/mortgage");
+
+  const { accountId, setAccountId } = useGlobalFilters();
+  const accountsQ = useQuery({
+    queryKey: ["accounts"],
+    queryFn: () => listAccounts(),
+  });
+  const accounts = accountsQ.data ?? [];
+
+  const selectValue = accountId == null ? ALL_ACCOUNTS : String(accountId);
 
   return (
     <header className="flex h-14 items-center justify-between border-b border-border px-4 lg:px-6 shrink-0">
@@ -46,13 +58,21 @@ export function TopBar({ title }: TopBarProps) {
               ))}
             </SelectContent>
           </Select>
-          <Select defaultValue="All Accounts">
+          <Select
+            value={selectValue}
+            onValueChange={(v) =>
+              setAccountId(v === ALL_ACCOUNTS ? null : Number(v))
+            }
+          >
             <SelectTrigger className="w-[160px] h-8 text-xs bg-secondary border-border">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {accountOptions.map((a) => (
-                <SelectItem key={a} value={a}>{a}</SelectItem>
+              <SelectItem value={ALL_ACCOUNTS}>All Accounts</SelectItem>
+              {accounts.map((a) => (
+                <SelectItem key={a.id} value={String(a.id)}>
+                  {a.name}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
