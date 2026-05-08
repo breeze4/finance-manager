@@ -48,7 +48,7 @@ export function AppSidebar() {
         </div>
         {!collapsed && (
           <span className="text-sm font-semibold text-foreground tracking-tight">
-            Finance Analyzer
+            Finance Manager
           </span>
         )}
       </div>

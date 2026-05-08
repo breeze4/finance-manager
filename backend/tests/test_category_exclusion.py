@@ -68,9 +68,7 @@ class TestExcludeFromBudgetAtEverySurface:
         set_budget(db, category_id=gid, year=2026, monthly_amount=500.0)
 
         _make_txn(db, amount=-300, category_id=gid, txn_date=date(2026, 1, 10))
-        _make_txn(
-            db, amount=-1500, category_id=excluded_id, txn_date=date(2026, 1, 12)
-        )
+        _make_txn(db, amount=-1500, category_id=excluded_id, txn_date=date(2026, 1, 12))
 
         result = get_actual_vs_budget(db, year=2026)
         jan = next(e for e in result.entries if e.month == 1 and e.category_id == gid)
@@ -84,9 +82,7 @@ class TestExcludeFromBudgetAtEverySurface:
 
         _make_txn(db, amount=-300, category_id=gid, txn_date=date(2025, 1, 10))
         _make_txn(db, amount=-300, category_id=gid, txn_date=date(2025, 2, 10))
-        _make_txn(
-            db, amount=-1500, category_id=excluded_id, txn_date=date(2025, 1, 11)
-        )
+        _make_txn(db, amount=-1500, category_id=excluded_id, txn_date=date(2025, 1, 11))
 
         results = get_historical_analysis(db)
         names = [r.category_name for r in results]
@@ -94,9 +90,7 @@ class TestExcludeFromBudgetAtEverySurface:
         groceries = next(r for r in results if r.category_name == "Groceries")
         assert groceries.monthly_average == 300.0
 
-    def test_excluded_from_stats_summary(
-        self, client: TestClient, db: Session, seed_categories
-    ):
+    def test_excluded_from_stats_summary(self, client: TestClient, db: Session, seed_categories):
         gid = seed_categories["Groceries"]
         excluded_id = _add_excluded_category(db)
 
@@ -112,32 +106,24 @@ class TestExcludeFromBudgetAtEverySurface:
         category_names = [c["category_name"] for c in data["top_categories"]]
         assert "Mortgage Payoff" not in category_names
 
-    def test_excluded_from_monthly_stats(
-        self, client: TestClient, db: Session, seed_categories
-    ):
+    def test_excluded_from_monthly_stats(self, client: TestClient, db: Session, seed_categories):
         gid = seed_categories["Groceries"]
         excluded_id = _add_excluded_category(db)
 
         _make_txn(db, amount=-100, category_id=gid, txn_date=date(2025, 3, 1))
-        _make_txn(
-            db, amount=-2000, category_id=excluded_id, txn_date=date(2025, 3, 2)
-        )
+        _make_txn(db, amount=-2000, category_id=excluded_id, txn_date=date(2025, 3, 2))
 
         resp = client.get("/api/stats/monthly", params={"year": 2025})
         data = resp.json()
         march = [m for m in data["months"] if m["month"] == 3]
         assert all(m["category_name"] != "Mortgage Payoff" for m in march)
 
-    def test_excluded_from_forecast_yoy(
-        self, client: TestClient, db: Session, seed_categories
-    ):
+    def test_excluded_from_forecast_yoy(self, client: TestClient, db: Session, seed_categories):
         gid = seed_categories["Groceries"]
         excluded_id = _add_excluded_category(db)
 
         _make_txn(db, amount=-300, category_id=gid, txn_date=date(2025, 6, 1))
-        _make_txn(
-            db, amount=-9000, category_id=excluded_id, txn_date=date(2025, 6, 2)
-        )
+        _make_txn(db, amount=-9000, category_id=excluded_id, txn_date=date(2025, 6, 2))
 
         resp = client.get("/api/forecast/yoy")
         assert resp.status_code == 200

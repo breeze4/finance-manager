@@ -1,6 +1,6 @@
-# Finance Analyzer Frontend
+# Finance Manager Frontend
 
-React 18 + Vite + TypeScript + Tailwind + shadcn/ui shell for Finance Analyzer.
+React 18 + Vite + TypeScript + Tailwind + shadcn/ui shell for Finance Manager.
 
 ## Stack notes
 

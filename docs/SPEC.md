@@ -1,4 +1,4 @@
-# Finance Analyzer
+# Finance Manager
 
 Personal finance tool for transaction classification, spending analysis, budget estimation, and financial forecasting. Single-user, runs locally.
 

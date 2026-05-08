@@ -17,7 +17,7 @@ const titleMap: Record<string, string> = {
 
 export function Layout() {
   const location = useLocation();
-  const title = titleMap[location.pathname] || "Finance Analyzer";
+  const title = titleMap[location.pathname] || "Finance Manager";
 
   return (
     <GlobalFiltersProvider>
