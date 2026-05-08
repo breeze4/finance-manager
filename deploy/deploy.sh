@@ -1,20 +1,29 @@
 #!/usr/bin/env bash
-# Deploy finance-analyzer to finance-host from dev machine.
-# Usage: ./deploy/deploy.sh
+# Deploy finance-analyzer to a remote host from the dev machine.
+# Usage: DEPLOY_HOST=your-server ./deploy/deploy.sh
+# Or export DEPLOY_HOST in your shell. Defaults to "finance-host".
 #
 # Pipeline: lint -> tests -> build -> sync -> install -> migrate -> restart -> verify.
 # Any failing step aborts the deploy (`set -e`).
 
 set -euo pipefail
 
-HOST=finance-host
-APP_DIR=dev/finance-analyzer
-PORT=8003
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 cd "$PROJECT_DIR"
+
+# Load .env (gitignored) for DEPLOY_HOST and other secrets, if present.
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
+HOST="${DEPLOY_HOST:-finance-host}"
+APP_DIR=dev/finance-analyzer
+PORT=8003
 
 echo "==> [1/8] Backend: ruff lint"
 (cd backend && uv run ruff check . && uv run ruff format --check .)

@@ -10,8 +10,8 @@ Single-user personal finance app. Read `docs/SPEC.md` before planning new work �
 `docs/SPEC.md` → `docs/specs/YYYY-MM-DD-NN-slug.md` → `docs/plans/YYYY-MM-DD-NN-slug.md` → implement → `docs/handoff/`.
 
 ## Deployment
-Beebaby is canonical; local `data/finance.db` is ephemeral test data.
+The deploy host is canonical; local `data/finance.db` is ephemeral test data. Set `DEPLOY_HOST` in `.env` (gitignored) or shell env.
 - `app.main:app` exposes `/api/*` for dev/tests; `app.main:mounted_app` wraps it under `/finance/` and serves built frontend (production target on port 8003).
-- One-time: `ssh finance-host 'bash -s' < deploy/setup.sh`, `scp data/finance.db finance-host:~/dev/finance-analyzer/data/`, then `./deploy/deploy.sh`.
-- Ongoing: `./deploy/deploy.sh` gates on lint/tests/build, runs alembic, restarts. Live at `http://finance-host:8003/finance/`.
-- Daily snapshots in `~/backups/finance/*.db.gz` on finance-host (30 kept). rsync excludes `data/` + `input/` — server DB is canonical.
+- One-time: `ssh "$DEPLOY_HOST" 'bash -s' < deploy/setup.sh`, `scp data/finance.db "$DEPLOY_HOST":~/dev/finance-analyzer/data/`, then `./deploy/deploy.sh`.
+- Ongoing: `./deploy/deploy.sh` gates on lint/tests/build, runs alembic, restarts. Live at `http://$DEPLOY_HOST:8003/finance/`.
+- Daily snapshots in `~/backups/finance/*.db.gz` on the deploy host (30 kept). rsync excludes `data/` + `input/` — server DB is canonical.

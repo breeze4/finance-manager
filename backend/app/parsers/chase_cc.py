@@ -44,7 +44,7 @@ _VENDOR_PREFIXES = re.compile(
 _TRAILING_STORE_NUM = re.compile(r"\s*[#]\d+$")
 _TRAILING_DIGITS = re.compile(r"\s+\d{4,}$")
 
-# Chase exports are named like "Chase1234_Activity20240507_...CSV" — the
+# Chase exports are named like "ChaseNNNN_ActivityYYYYMMDD_...CSV" — the
 # digits between "Chase" and the first underscore are the card's last-four,
 # which we use to keep each card's transactions in their own account.
 _CHASE_FILENAME = re.compile(r"^Chase(\d+)_", re.IGNORECASE)
