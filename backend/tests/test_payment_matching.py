@@ -117,9 +117,9 @@ class TestDetectPayments:
         assert chase.is_transfer is False
 
     def test_date_outside_window_no_match(self, db: Session):
-        """Dates more than 3 days apart should not match."""
+        """Dates more than 5 days apart should not match."""
         becu = _make_becu_txn(db, amount=-500.00, txn_date=date(2025, 1, 15))
-        chase = _make_chase_payment(db, amount=500.00, txn_date=date(2025, 1, 19))
+        chase = _make_chase_payment(db, amount=500.00, txn_date=date(2025, 1, 21))
 
         result = detect_payments(db)
         assert result.matches_found == 0
@@ -130,9 +130,9 @@ class TestDetectPayments:
         assert chase.is_transfer is False
 
     def test_date_at_boundary_matches(self, db: Session):
-        """Dates exactly 3 days apart should match."""
+        """Dates exactly 5 days apart should match."""
         _make_becu_txn(db, amount=-500.00, txn_date=date(2025, 1, 15))
-        _make_chase_payment(db, amount=500.00, txn_date=date(2025, 1, 18))
+        _make_chase_payment(db, amount=500.00, txn_date=date(2025, 1, 20))
 
         result = detect_payments(db)
         assert result.matches_found == 1

@@ -17,7 +17,7 @@ def detect_payments(db: Session) -> DetectionResult:
     BECU candidates: raw_description LIKE '%CHASE CREDIT CRD%' AND is_transfer = false
     Chase candidates: type = 'Payment' AND is_transfer = false
 
-    Match criteria: amounts equal in magnitude, dates within 3 days.
+    Match criteria: amounts equal in magnitude, dates within 5 days.
     Idempotent: only considers is_transfer = false transactions.
     """
     becu_candidates = (
@@ -47,7 +47,7 @@ def detect_payments(db: Session) -> DetectionResult:
                 continue
 
             amounts_match = round(abs(becu_txn.amount), 2) == round(abs(chase_txn.amount), 2)
-            dates_close = abs((becu_txn.date - chase_txn.date).days) <= 3
+            dates_close = abs((becu_txn.date - chase_txn.date).days) <= 5
 
             if amounts_match and dates_close:
                 becu_txn.is_transfer = True
