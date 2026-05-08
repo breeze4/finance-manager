@@ -37,3 +37,6 @@ Thumbs.db
 
 # Claude Code local settings
 .claude/
+
+# Local smoke-test output
+screenshots/

@@ -59,3 +59,47 @@ export function updateSubscription(
     body: JSON.stringify(payload),
   });
 }
+
+/**
+ * One row in the remaining-subscriptions list.
+ *
+ * Mirrors `RemainingSubscription` in `backend/app/schemas/subscription.py`.
+ * Frontend v1 only displays `total` and `count` from the parent response,
+ * but the row shape is exposed for future detail surfacing.
+ */
+export interface RemainingSubscription {
+  id: number;
+  vendor: string;
+  expected_date: string; // YYYY-MM-DD
+  expected_amount: number;
+  category_id: number | null;
+  category_name: string;
+}
+
+export interface RemainingSubscriptionsResponse {
+  total: number;
+  count: number;
+  subscriptions: RemainingSubscription[];
+}
+
+/**
+ * Fetch active subscriptions whose next-expected-charge falls inside
+ * `[dateFrom, dateTo]` and have not yet matched a transaction.
+ *
+ * The endpoint returns 204 No Content for ranges that aren't the
+ * in-progress current month. `request<T>` resolves 204 to `undefined`,
+ * which TanStack Query rejects as a queryFn return value, so we coerce
+ * to `null` here. Callers branch on `null` to hide the dashboard card.
+ */
+export function getRemainingSubscriptions(args: {
+  dateFrom: string;
+  dateTo: string;
+}): Promise<RemainingSubscriptionsResponse | null> {
+  const qs = new URLSearchParams({
+    date_from: args.dateFrom,
+    date_to: args.dateTo,
+  });
+  return request<RemainingSubscriptionsResponse | undefined>(
+    `${BASE}/remaining?${qs.toString()}`,
+  ).then((data) => data ?? null);
+}

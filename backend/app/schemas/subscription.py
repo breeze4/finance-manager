@@ -29,3 +29,35 @@ class SubscriptionUpdate(BaseModel):
 class SubscriptionDetectionResult(BaseModel):
     subscriptions_found: int
     total_active: int
+
+
+class RemainingSubscription(BaseModel):
+    """One row in the remaining-subscriptions list.
+
+    Returned inside ``RemainingSubscriptionsResponse.subscriptions``. The
+    Step-1 service helper emits ``Decimal`` for ``expected_amount``; the
+    router converts to ``float`` at the wire boundary (same convention as
+    the pace router).
+    """
+
+    id: int
+    vendor: str
+    expected_date: date
+    expected_amount: float
+    category_id: int | None = None
+    category_name: str  # "(uncategorized)" when no category linked
+
+
+class RemainingSubscriptionsResponse(BaseModel):
+    """Wire shape for ``GET /api/subscriptions/remaining``.
+
+    ``total`` and ``count`` are reductions over ``subscriptions``. The
+    list is reserved for future detail surfacing; v1 frontend only
+    displays ``total`` and ``count``. The 204-when-out-of-current-MTD
+    branch arrives in plan ``2026-05-08-05`` (range picker) — this slice
+    always returns 200.
+    """
+
+    total: float
+    count: int
+    subscriptions: list[RemainingSubscription]

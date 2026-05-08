@@ -1,13 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import date
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.schemas.subscription import (
+    RemainingSubscription,
+    RemainingSubscriptionsResponse,
     SubscriptionDetectionResult,
     SubscriptionResponse,
     SubscriptionUpdate,
 )
-from app.services import subscription_service
+from app.services import subscription_due_service, subscription_service
 
 router = APIRouter(prefix="/api/subscriptions", tags=["subscriptions"])
 
@@ -34,6 +38,45 @@ def _sub_to_response(sub) -> SubscriptionResponse:
 def list_subscriptions(db: Session = Depends(get_db)):
     subs = subscription_service.list_subscriptions(db)
     return [_sub_to_response(s) for s in subs]
+
+
+@router.get("/remaining", response_model=RemainingSubscriptionsResponse)
+def get_remaining(
+    date_from: date = Query(...),
+    date_to: date = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Active subscriptions expected in [date_from, date_to] not yet matched.
+
+    Returns 204 No Content when the range isn't the in-progress current
+    month (``date_from != first-of-current-month`` OR ``date_to <
+    today``) — "subscriptions remaining" is meaningful only for pace
+    mode, per the spec. Otherwise wraps
+    ``subscription_due_service.subscriptions_remaining`` and returns the
+    documented 200 shape. Decimal money fields are converted to ``float``
+    at the wire boundary.
+    """
+    today = date.today()
+    expected_first = date(today.year, today.month, 1)
+    if not (date_from == expected_first and date_to >= today):
+        return Response(status_code=204)
+
+    result = subscription_due_service.subscriptions_remaining(db, date_from, date_to)
+    return RemainingSubscriptionsResponse(
+        total=float(result["total"]),
+        count=result["count"],
+        subscriptions=[
+            RemainingSubscription(
+                id=row["id"],
+                vendor=row["vendor"],
+                expected_date=row["expected_date"],
+                expected_amount=float(row["expected_amount"]),
+                category_id=row["category_id"],
+                category_name=row["category_name"],
+            )
+            for row in result["subscriptions"]
+        ],
+    )
 
 
 @router.post("/detect", response_model=SubscriptionDetectionResult)

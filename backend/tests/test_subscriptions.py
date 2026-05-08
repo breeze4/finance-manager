@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models import Category, Transaction
+from app.models import Category, Subscription, Transaction
 from app.services.ingestion import build_ingestion
 from app.services.subscription_service import detect_subscriptions, list_subscriptions
 
@@ -419,3 +419,196 @@ class TestSubscriptionIntegration:
                 f"{sub.vendor}: annual_estimate={sub.annual_estimate:.2f}, "
                 f"annualized_actual={annualized_actual:.2f}, ratio={ratio:.2f}"
             )
+
+
+def _make_sub(
+    db: Session,
+    *,
+    vendor: str,
+    frequency: str,
+    last_charge_date: date,
+    amount: float | None = 10.0,
+    amount_min: float | None = None,
+    amount_max: float | None = None,
+    annual_estimate: float = 120.0,
+    category_id: int | None,
+    is_active: bool = True,
+    subscription_type: str = "fixed",
+) -> Subscription:
+    """Mirrors the helper in test_subscription_due_service.py — direct
+    insert so we can stage exactly the active/inactive/uncategorized
+    combinations the GET /api/subscriptions/remaining tests need."""
+    sub = Subscription(
+        vendor=vendor,
+        frequency=frequency,
+        subscription_type=subscription_type,
+        amount=amount,
+        amount_min=amount_min,
+        amount_max=amount_max,
+        annual_estimate=annual_estimate,
+        last_charge_date=last_charge_date,
+        category_id=category_id,
+        is_active=is_active,
+    )
+    db.add(sub)
+    db.commit()
+    db.refresh(sub)
+    return sub
+
+
+class TestRemainingEndpoint:
+    """Integration tests for ``GET /api/subscriptions/remaining``.
+
+    The endpoint returns 204 No Content for any range that isn't
+    ``[first-of-current-month, today-or-later]`` (Step 5). The 200-shape
+    tests construct ranges aligned to wall-clock today so the endpoint
+    accepts them as in-progress current-MTD ranges.
+    """
+
+    def _current_mtd(self) -> tuple[str, str]:
+        today = date.today()
+        first = date(today.year, today.month, 1)
+        return first.isoformat(), today.isoformat()
+
+    def test_returns_200_with_documented_shape(self, client: TestClient, db: Session):
+        cats = _seed_categories(db)
+        # Sub expected ~today's month so it lands inside the current-MTD
+        # window. Seed last_charge_date one month back from today.
+        today = date.today()
+        last_charge = date(
+            today.year if today.month > 1 else today.year - 1,
+            today.month - 1 if today.month > 1 else 12,
+            min(today.day, 28),
+        )
+        _make_sub(
+            db,
+            vendor="Netflix",
+            frequency="monthly",
+            last_charge_date=last_charge,
+            amount=15.99,
+            annual_estimate=191.88,
+            category_id=cats["Entertainment"],
+        )
+
+        date_from, date_to = self._current_mtd()
+        resp = client.get(
+            "/api/subscriptions/remaining",
+            params={"date_from": date_from, "date_to": date_to},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert set(data.keys()) == {"total", "count", "subscriptions"}
+        assert isinstance(data["subscriptions"], list)
+
+    def test_inactive_sub_excluded(self, client: TestClient, db: Session):
+        cats = _seed_categories(db)
+        today = date.today()
+        last_charge = date(
+            today.year if today.month > 1 else today.year - 1,
+            today.month - 1 if today.month > 1 else 12,
+            min(today.day, 28),
+        )
+        _make_sub(
+            db,
+            vendor="Spotify",
+            frequency="monthly",
+            last_charge_date=last_charge,
+            amount=9.99,
+            annual_estimate=119.88,
+            category_id=cats["Entertainment"],
+            is_active=False,
+        )
+
+        date_from, date_to = self._current_mtd()
+        resp = client.get(
+            "/api/subscriptions/remaining",
+            params={"date_from": date_from, "date_to": date_to},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["count"] == 0
+        assert data["subscriptions"] == []
+
+    def test_uncategorized_sub_included_with_label(self, client: TestClient, db: Session):
+        # No categories seeded — a sub with category_id=None must still
+        # appear in the response with category_name="(uncategorized)".
+        today = date.today()
+        last_charge = date(
+            today.year if today.month > 1 else today.year - 1,
+            today.month - 1 if today.month > 1 else 12,
+            min(today.day, 28),
+        )
+        _make_sub(
+            db,
+            vendor="MysteryCharge",
+            frequency="monthly",
+            last_charge_date=last_charge,
+            amount=12.50,
+            annual_estimate=150.00,
+            category_id=None,
+        )
+
+        date_from, date_to = self._current_mtd()
+        resp = client.get(
+            "/api/subscriptions/remaining",
+            params={"date_from": date_from, "date_to": date_to},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["count"] == 1
+        row = data["subscriptions"][0]
+        assert row["vendor"] == "MysteryCharge"
+        assert row["category_id"] is None
+        assert row["category_name"] == "(uncategorized)"
+
+    def test_returns_204_for_completed_last_month(self, client: TestClient, db: Session):
+        """A range entirely before today is not current-MTD → 204."""
+        cats = _seed_categories(db)
+        _make_sub(
+            db,
+            vendor="Netflix",
+            frequency="monthly",
+            last_charge_date=date(2025, 1, 5),
+            amount=15.99,
+            annual_estimate=191.88,
+            category_id=cats["Entertainment"],
+        )
+        resp = client.get(
+            "/api/subscriptions/remaining",
+            params={"date_from": "2025-02-01", "date_to": "2025-02-28"},
+        )
+        assert resp.status_code == 204
+        # 204 has no body.
+        assert resp.text == ""
+
+    def test_returns_204_for_last_30_days(self, client: TestClient, db: Session):
+        """Last-30-days range doesn't start at first-of-current-month → 204."""
+        today = date.today()
+        thirty_days_ago = today.fromordinal(today.toordinal() - 30)
+        resp = client.get(
+            "/api/subscriptions/remaining",
+            params={
+                "date_from": thirty_days_ago.isoformat(),
+                "date_to": today.isoformat(),
+            },
+        )
+        assert resp.status_code == 204
+
+    def test_returns_204_when_date_from_correct_but_date_to_in_past(
+        self, client: TestClient, db: Session
+    ):
+        """date_from = first-of-current-month but date_to before today → 204
+        (completed sub-window of the current month)."""
+        today = date.today()
+        first = date(today.year, today.month, 1)
+        # Pick a date_to strictly before today, but still in the same month.
+        # If today is the 1st we can't construct a strictly-earlier date in
+        # the same month; in that case skip without failing.
+        if today.day == 1:
+            return
+        date_to = date(today.year, today.month, today.day - 1)
+        resp = client.get(
+            "/api/subscriptions/remaining",
+            params={"date_from": first.isoformat(), "date_to": date_to.isoformat()},
+        )
+        assert resp.status_code == 204

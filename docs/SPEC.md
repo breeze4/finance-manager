@@ -262,6 +262,17 @@ Four charts below:
 - **Income vs Expenses**: Dual-bar chart comparing monthly income and spending
 - **Top Vendors**: Horizontal bar chart of the top 10 vendors by total spending
 
+#### Redesign in flight
+
+The Overview is being redesigned around the question "Am I on track this
+month?" Centerpiece becomes the four CSP buckets shown as pace bars (actual
+MTD vs expected MTD), with a single on-track headline above. A range picker
+re-anchors the whole page — pace mode for the in-progress current month,
+actual-vs-budget mode for any completed range. Backed by three new dedicated
+endpoints (`/api/stats/monthly-pace`, `/api/stats/spending-trend`,
+`/api/subscriptions/remaining`). See
+`docs/specs/2026-05-08-01-overview-redesign.md`.
+
 ### Transaction List
 
 - Sortable by date, amount, vendor, category, account
