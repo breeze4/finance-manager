@@ -66,9 +66,9 @@ const DEFAULT_SORT_DIR: Record<SortKey, SortDir> = {
 function categoryQueryParam(
   category: string,
   categories: CategoryResponse[]
-): { categoryId?: number; isReviewed?: boolean } {
+): { categoryId?: number; isUncategorized?: boolean } {
   if (category === ALL) return {};
-  if (category === UNCLASSIFIED) return { isReviewed: false };
+  if (category === UNCLASSIFIED) return { isUncategorized: true };
   const match = categories.find((c) => c.name === category);
   return match ? { categoryId: match.id } : {};
 }
@@ -181,7 +181,7 @@ export default function Transactions() {
 
   const updateM = useMutation({
     mutationFn: ({ id, categoryId }: { id: number; categoryId: number | null }) =>
-      updateTransaction(id, { categoryId, isReviewed: categoryId != null }),
+      updateTransaction(id, { categoryId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
     },
@@ -189,7 +189,7 @@ export default function Transactions() {
 
   const bulkM = useMutation({
     mutationFn: ({ ids, categoryId }: { ids: number[]; categoryId: number }) =>
-      bulkUpdateTransactions({ ids, categoryId, isReviewed: true }),
+      bulkUpdateTransactions({ ids, categoryId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
       setSelectedRows(new Set());

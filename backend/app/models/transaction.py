@@ -24,7 +24,6 @@ class Transaction(Base):
     type: Mapped[str | None] = mapped_column(String, nullable=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     is_transfer: Mapped[bool] = mapped_column(Boolean, default=False)
-    is_reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
     memo: Mapped[str | None] = mapped_column(String, nullable=True)
     import_hash: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

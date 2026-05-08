@@ -19,7 +19,6 @@ class TransactionResponse(BaseModel):
     type: str | None
     is_verified: bool
     is_transfer: bool
-    is_reviewed: bool
     memo: str | None
     created_at: datetime
     updated_at: datetime
@@ -37,7 +36,6 @@ class PaginatedTransactions(BaseModel):
 class TransactionUpdate(BaseModel):
     category_id: int | None = None
     is_verified: bool | None = None
-    is_reviewed: bool | None = None
     vendor: str | None = None
     memo: str | None = None
 
@@ -46,4 +44,3 @@ class BulkUpdateRequest(BaseModel):
     ids: list[int]
     category_id: int | None = None
     is_verified: bool | None = None
-    is_reviewed: bool | None = None

@@ -34,7 +34,6 @@ def _txn_to_response(txn) -> TransactionResponse:
         type=txn.type,
         is_verified=txn.is_verified,
         is_transfer=txn.is_transfer,
-        is_reviewed=txn.is_reviewed,
         memo=txn.memo,
         created_at=txn.created_at,
         updated_at=txn.updated_at,
@@ -51,7 +50,7 @@ def list_transactions(
     amount_min: float | None = None,
     amount_max: float | None = None,
     is_verified: bool | None = None,
-    is_reviewed: bool | None = None,
+    is_uncategorized: bool | None = None,
     is_transfer: bool | None = None,
     search: str | None = None,
     sort_by: str = "date",
@@ -70,7 +69,7 @@ def list_transactions(
         amount_min=amount_min,
         amount_max=amount_max,
         is_verified=is_verified,
-        is_reviewed=is_reviewed,
+        is_uncategorized=is_uncategorized,
         is_transfer=is_transfer,
         search=search,
         sort_by=sort_by,
@@ -105,8 +104,6 @@ def update_transaction(
         kwargs["category_id"] = body.category_id
     if body.is_verified is not None:
         kwargs["is_verified"] = body.is_verified
-    if body.is_reviewed is not None:
-        kwargs["is_reviewed"] = body.is_reviewed
     if body.vendor is not None:
         kwargs["vendor"] = body.vendor
     if body.memo is not None:
@@ -137,8 +134,6 @@ def bulk_update_transactions(body: BulkUpdateRequest, db: Session = Depends(get_
         kwargs["category_id"] = body.category_id
     if body.is_verified is not None:
         kwargs["is_verified"] = body.is_verified
-    if body.is_reviewed is not None:
-        kwargs["is_reviewed"] = body.is_reviewed
 
     if not kwargs:
         raise HTTPException(status_code=400, detail="No fields to update")

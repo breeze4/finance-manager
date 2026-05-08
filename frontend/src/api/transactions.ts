@@ -36,7 +36,6 @@ export interface Transaction {
   type: string | null;
   verified: boolean;
   isTransfer: boolean;
-  isReviewed: boolean;
   postDate: string;
   sourceFile: string;
 }
@@ -59,7 +58,7 @@ export interface ListTransactionsParams {
   amountMin?: number;
   amountMax?: number;
   isVerified?: boolean;
-  isReviewed?: boolean;
+  isUncategorized?: boolean;
   isTransfer?: boolean;
   search?: string;
   sortBy?: string;
@@ -71,7 +70,6 @@ export interface ListTransactionsParams {
 export interface TransactionUpdatePayload {
   categoryId?: number | null;
   isVerified?: boolean;
-  isReviewed?: boolean;
   vendor?: string;
   memo?: string;
 }
@@ -80,7 +78,6 @@ export interface BulkUpdatePayload {
   ids: number[];
   categoryId?: number | null;
   isVerified?: boolean;
-  isReviewed?: boolean;
 }
 
 export interface BulkUpdateResult {
@@ -105,7 +102,6 @@ interface TransactionResponseRaw {
   type: string | null;
   is_verified: boolean;
   is_transfer: boolean;
-  is_reviewed: boolean;
   memo: string | null;
   created_at: string;
   updated_at: string;
@@ -133,7 +129,6 @@ function toTransaction(raw: TransactionResponseRaw): Transaction {
     type: raw.type,
     verified: raw.is_verified,
     isTransfer: raw.is_transfer,
-    isReviewed: raw.is_reviewed,
     postDate: raw.post_date ?? raw.date,
     sourceFile: raw.source_file,
   };
@@ -153,7 +148,7 @@ export function listTransactions(
   if (params.amountMin != null) qs.set("amount_min", String(params.amountMin));
   if (params.amountMax != null) qs.set("amount_max", String(params.amountMax));
   if (params.isVerified != null) qs.set("is_verified", String(params.isVerified));
-  if (params.isReviewed != null) qs.set("is_reviewed", String(params.isReviewed));
+  if (params.isUncategorized != null) qs.set("is_uncategorized", String(params.isUncategorized));
   if (params.isTransfer != null) qs.set("is_transfer", String(params.isTransfer));
   if (params.search) qs.set("search", params.search);
   if (params.sortBy) qs.set("sort_by", params.sortBy);
@@ -182,7 +177,6 @@ export function updateTransaction(
   const body: Record<string, unknown> = {};
   if (payload.categoryId !== undefined) body.category_id = payload.categoryId;
   if (payload.isVerified !== undefined) body.is_verified = payload.isVerified;
-  if (payload.isReviewed !== undefined) body.is_reviewed = payload.isReviewed;
   if (payload.vendor !== undefined) body.vendor = payload.vendor;
   if (payload.memo !== undefined) body.memo = payload.memo;
   return request<TransactionResponseRaw>(`${BASE}/${id}`, {
@@ -197,7 +191,6 @@ export function bulkUpdateTransactions(
   const body: Record<string, unknown> = { ids: payload.ids };
   if (payload.categoryId !== undefined) body.category_id = payload.categoryId;
   if (payload.isVerified !== undefined) body.is_verified = payload.isVerified;
-  if (payload.isReviewed !== undefined) body.is_reviewed = payload.isReviewed;
   return request<BulkUpdateResult>(`${BASE}/bulk-update`, {
     method: "POST",
     body: JSON.stringify(body),

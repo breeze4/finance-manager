@@ -26,7 +26,6 @@ def _txn_to_response(txn) -> TransactionResponse:
         type=txn.type,
         is_verified=txn.is_verified,
         is_transfer=txn.is_transfer,
-        is_reviewed=txn.is_reviewed,
         memo=txn.memo,
         created_at=txn.created_at,
         updated_at=txn.updated_at,

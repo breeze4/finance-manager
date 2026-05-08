@@ -51,7 +51,6 @@ All parsed transactions normalize into:
 - `type` (Sale, Payment, Return, etc. from source)
 - `is_verified` (has a human confirmed the category)
 - `is_transfer` (matched as an inter-account transfer / payment)
-- `is_reviewed` (user has looked at and confirmed this transaction — distinct from `is_verified` which means category is confirmed)
 - `memo` (if available)
 
 ## Categories
@@ -76,8 +75,7 @@ Hybrid batch/detail interface:
 
 - **Batch table view**: Spreadsheet-like list of transactions needing review. Inline category dropdowns. Bulk actions — select multiple transactions matching a filter and assign a category in one action.
 - **Focused single-item mode**: For ambiguous transactions, drill into a single item with full context (similar transactions, vendor history).
-- **Filter-driven workflow**: Filter unclassified or unverified transactions by any dimension (vendor, date range, amount range, account), then bulk-classify the filtered set.
-- **Reviewed marking**: Transactions can be marked "reviewed" independently of classification. This lets users work through their transaction list and confirm they've seen each item, even if the category was already correct. Useful for staying on top of new imports.
+- **Filter-driven workflow**: Filter unclassified transactions by any dimension (vendor, date range, amount range, account), then bulk-classify the filtered set. "Unclassified" means a transaction has no category assigned (`category_id IS NULL`); assigning any category — including the explicit `Uncategorized` bucket — removes it from the unclassified queue.
 
 When a user classifies a transaction, a vendor-to-category rule is auto-created for future matching.
 

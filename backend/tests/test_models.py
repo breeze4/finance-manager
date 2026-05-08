@@ -97,7 +97,6 @@ class TestTransactionModel:
         assert txn.category.name == "Groceries"
         assert txn.is_verified is False
         assert txn.is_transfer is False
-        assert txn.is_reviewed is False
 
     def test_import_hash_unique(self, db: Session):
         account = _make_account(db)

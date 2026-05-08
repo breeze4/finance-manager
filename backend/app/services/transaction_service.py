@@ -17,7 +17,7 @@ def list_transactions(
     amount_min: float | None = None,
     amount_max: float | None = None,
     is_verified: bool | None = None,
-    is_reviewed: bool | None = None,
+    is_uncategorized: bool | None = None,
     is_transfer: bool | None = None,
     search: str | None = None,
     sort_by: str = "date",
@@ -47,8 +47,11 @@ def list_transactions(
         query = query.filter(Transaction.amount <= amount_max)
     if is_verified is not None:
         query = query.filter(Transaction.is_verified == is_verified)
-    if is_reviewed is not None:
-        query = query.filter(Transaction.is_reviewed == is_reviewed)
+    if is_uncategorized is not None:
+        if is_uncategorized:
+            query = query.filter(Transaction.category_id.is_(None))
+        else:
+            query = query.filter(Transaction.category_id.is_not(None))
     if is_transfer is not None:
         query = query.filter(Transaction.is_transfer == is_transfer)
     if search is not None:
@@ -96,7 +99,6 @@ def update_transaction(
     *,
     category_id: int | None = ...,
     is_verified: bool | None = ...,
-    is_reviewed: bool | None = ...,
     vendor: str | None = ...,
     memo: str | None = ...,
 ) -> Transaction | None:
@@ -109,8 +111,6 @@ def update_transaction(
         txn.category_id = category_id
     if is_verified is not ...:
         txn.is_verified = is_verified
-    if is_reviewed is not ...:
-        txn.is_reviewed = is_reviewed
     if vendor is not ...:
         txn.vendor = vendor
     if memo is not ...:
@@ -127,7 +127,6 @@ def bulk_update_transactions(
     *,
     category_id: int | None = ...,
     is_verified: bool | None = ...,
-    is_reviewed: bool | None = ...,
 ) -> int:
     """Bulk update transactions. Returns count of updated rows."""
     query = db.query(Transaction).filter(Transaction.id.in_(ids))
@@ -137,8 +136,6 @@ def bulk_update_transactions(
         updates["category_id"] = category_id
     if is_verified is not ...:
         updates["is_verified"] = is_verified
-    if is_reviewed is not ...:
-        updates["is_reviewed"] = is_reviewed
 
     if not updates:
         return 0
