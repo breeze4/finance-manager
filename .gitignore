@@ -15,6 +15,7 @@ frontend/dist/
 
 # Data
 data/*.db
+data/*.db.*
 data/*.db-journal
 
 # Financial input files (sensitive)
