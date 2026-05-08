@@ -15,6 +15,8 @@ def _to_response(cat: Category, count: int) -> CategoryResponse:
         name=cat.name,
         is_system=cat.is_system,
         exclude_from_budget=cat.exclude_from_budget,
+        csp_bucket=cat.csp_bucket,
+        is_pre_tax=cat.is_pre_tax,
         transaction_count=count,
     )
 
@@ -41,6 +43,8 @@ def create_category(body: CategoryCreate, db: Session = Depends(get_db)):
         name=body.name,
         is_system=False,
         exclude_from_budget=body.exclude_from_budget,
+        csp_bucket=body.csp_bucket.value if body.csp_bucket is not None else None,
+        is_pre_tax=body.is_pre_tax,
     )
     db.add(cat)
     db.commit()
@@ -67,6 +71,15 @@ def update_category(category_id: int, body: CategoryUpdate, db: Session = Depend
 
     if body.exclude_from_budget is not None:
         cat.exclude_from_budget = body.exclude_from_budget
+
+    # csp_bucket: PATCH semantics — field absent in body means "no change",
+    # but explicit None means "clear the bucket". Pydantic doesn't distinguish
+    # those by default, so we use ``model_fields_set`` to detect the difference.
+    if "csp_bucket" in body.model_fields_set:
+        cat.csp_bucket = body.csp_bucket.value if body.csp_bucket is not None else None
+
+    if body.is_pre_tax is not None:
+        cat.is_pre_tax = body.is_pre_tax
 
     db.commit()
     db.refresh(cat)

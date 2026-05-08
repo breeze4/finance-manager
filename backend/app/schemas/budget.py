@@ -58,6 +58,8 @@ class ActualVsBudgetEntry(BaseModel):
     actual_spend: float
     difference: float
     percentage: float
+    csp_bucket: str | None = None
+    is_pre_tax: bool = False
 
 
 class MonthlyRollup(BaseModel):

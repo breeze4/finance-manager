@@ -6,18 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models import Category, Subscription, Transaction
 from app.services.category_filters import not_excluded_from_budget
-
-# Standard periods in days and their labels.
-_PERIODS = [
-    ("weekly", 7),
-    ("bi-weekly", 14),
-    ("monthly", 30),
-    ("quarterly", 91),
-    ("annual", 365),
-]
-
-# Tolerance: median interval must be within ±30% of a standard period.
-_TOLERANCE = 0.30
+from app.services.recurring_detection import classify_frequency as _classify_frequency
 
 # Minimum number of transactions from a vendor to consider for detection.
 _MIN_TRANSACTIONS = 3
@@ -30,24 +19,6 @@ _FIXED_CV_THRESHOLD = 0.05
 class DetectionResult:
     subscriptions_found: int
     total_active: int
-
-
-def _classify_frequency(median_interval: float, intervals: list[int]) -> str | None:
-    """Match a median interval to a standard frequency, or None if no match.
-
-    Requires that at least 50% of individual intervals also fall within the
-    tolerance band of the matched period. This prevents false positives when
-    the median happens to land in a band despite highly irregular spacing.
-    """
-    for label, period in _PERIODS:
-        low = period * (1 - _TOLERANCE)
-        high = period * (1 + _TOLERANCE)
-        if low <= median_interval <= high:
-            # Check consistency: majority of intervals must also be in range.
-            in_range = sum(1 for iv in intervals if low <= iv <= high)
-            if in_range / len(intervals) >= 0.5:
-                return label
-    return None
 
 
 def _annual_multiplier(frequency: str) -> float:

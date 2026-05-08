@@ -66,6 +66,10 @@ export interface ActualVsBudgetEntry {
   /** Positive = under budget. */
   difference: number;
   percentage: number;
+  /** CSP bucket of the underlying category, or null if unbucketed. */
+  cspBucket: string | null;
+  /** True for pre-tax categories — actualSpend mirrors budgetTarget. */
+  isPreTax: boolean;
 }
 
 export interface MonthlyRollup {
@@ -134,6 +138,8 @@ interface ActualVsBudgetEntryRaw {
   actual_spend: number;
   difference: number;
   percentage: number;
+  csp_bucket: string | null;
+  is_pre_tax: boolean;
 }
 
 interface MonthlyRollupRaw {
@@ -215,6 +221,8 @@ function toActualVsBudget(raw: ActualVsBudgetResultRaw): ActualVsBudgetResult {
       actualSpend: e.actual_spend,
       difference: e.difference,
       percentage: e.percentage,
+      cspBucket: e.csp_bucket,
+      isPreTax: e.is_pre_tax,
     })),
     monthlyRollups: raw.monthly_rollups.map((m) => ({
       month: m.month,

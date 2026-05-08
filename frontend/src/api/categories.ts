@@ -10,22 +10,37 @@ import { request } from "./_client";
 
 const BASE = "/api/categories";
 
+export type CspBucket = "fixed" | "investments" | "savings" | "guilt_free";
+
+export const CSP_BUCKETS: CspBucket[] = [
+  "fixed",
+  "investments",
+  "savings",
+  "guilt_free",
+];
+
 export interface CategoryResponse {
   id: number;
   name: string;
   is_system: boolean;
   exclude_from_budget: boolean;
+  csp_bucket: CspBucket | null;
+  is_pre_tax: boolean;
   transaction_count: number;
 }
 
 export interface CategoryCreate {
   name: string;
   exclude_from_budget?: boolean;
+  csp_bucket?: CspBucket | null;
+  is_pre_tax?: boolean;
 }
 
 export interface CategoryUpdate {
   name?: string;
   exclude_from_budget?: boolean;
+  csp_bucket?: CspBucket | null;
+  is_pre_tax?: boolean;
 }
 
 export function listCategories(): Promise<CategoryResponse[]> {

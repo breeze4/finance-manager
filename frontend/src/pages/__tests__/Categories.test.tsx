@@ -5,12 +5,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 
 import Categories from "../Categories";
+import { API_BASE } from "@/api/_client";
 
 interface Cat {
   id: number;
   name: string;
   is_system: boolean;
   exclude_from_budget: boolean;
+  csp_bucket: "fixed" | "investments" | "savings" | "guilt_free" | null;
+  is_pre_tax: boolean;
   transaction_count: number;
 }
 
@@ -55,6 +58,8 @@ describe("Categories page", () => {
         name: "Groceries",
         is_system: true,
         exclude_from_budget: false,
+        csp_bucket: "fixed",
+        is_pre_tax: false,
         transaction_count: 12
       },
       {
@@ -62,6 +67,8 @@ describe("Categories page", () => {
         name: "Mortgage Payoff",
         is_system: false,
         exclude_from_budget: true,
+        csp_bucket: null,
+        is_pre_tax: false,
         transaction_count: 0
       }
     ];
@@ -85,15 +92,17 @@ describe("Categories page", () => {
     let posted: { url: string; body: unknown } | null = null;
     let listCalls = 0;
 
-    fetchSpy.mockImplementation(async (input: RequestInfo | URL, init) => {
+    fetchSpy.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (init?.method === "POST" && url.endsWith("/api/categories")) {
+      if (init?.method === "POST" && url.endsWith(`${API_BASE}/categories`)) {
         posted = { url, body: JSON.parse((init.body as string) ?? "{}") };
         return jsonResponse(201, {
           id: 42,
           name: "Mortgage Payoff",
           is_system: false,
           exclude_from_budget: true,
+          csp_bucket: null,
+          is_pre_tax: false,
           transaction_count: 0
         });
       }
@@ -107,6 +116,8 @@ describe("Categories page", () => {
                 name: "Mortgage Payoff",
                 is_system: false,
                 exclude_from_budget: true,
+                csp_bucket: null,
+                is_pre_tax: false,
                 transaction_count: 0
               }
             ]
@@ -126,7 +137,9 @@ describe("Categories page", () => {
     });
     expect(posted!.body).toEqual({
       name: "Mortgage Payoff",
-      exclude_from_budget: true
+      exclude_from_budget: true,
+      csp_bucket: null,
+      is_pre_tax: false
     });
   });
 
@@ -134,7 +147,7 @@ describe("Categories page", () => {
     const user = userEvent.setup();
     let patched: { url: string; body: unknown } | null = null;
 
-    fetchSpy.mockImplementation(async (input: RequestInfo | URL, init) => {
+    fetchSpy.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
       if (init?.method === "PATCH") {
         patched = { url, body: JSON.parse((init.body as string) ?? "{}") };
@@ -143,6 +156,8 @@ describe("Categories page", () => {
           name: "Investments",
           is_system: true,
           exclude_from_budget: true,
+          csp_bucket: "investments",
+          is_pre_tax: false,
           transaction_count: 5
         });
       }
@@ -152,6 +167,8 @@ describe("Categories page", () => {
           name: "Investments",
           is_system: true,
           exclude_from_budget: false,
+          csp_bucket: "investments",
+          is_pre_tax: false,
           transaction_count: 5
         }
       ]);
@@ -165,8 +182,51 @@ describe("Categories page", () => {
     await waitFor(() => {
       expect(patched).not.toBeNull();
     });
-    expect(patched!.url).toContain("/api/categories/1");
+    expect(patched!.url).toContain(`${API_BASE}/categories/1`);
     expect(patched!.body).toEqual({ exclude_from_budget: true });
+  });
+
+  it("toggles is_pre_tax inline via PATCH", async () => {
+    const user = userEvent.setup();
+    let patched: { url: string; body: unknown } | null = null;
+
+    fetchSpy.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (init?.method === "PATCH") {
+        patched = { url, body: JSON.parse((init.body as string) ?? "{}") };
+        return jsonResponse(200, {
+          id: 7,
+          name: "401k",
+          is_system: false,
+          exclude_from_budget: false,
+          csp_bucket: "investments",
+          is_pre_tax: true,
+          transaction_count: 0
+        });
+      }
+      return jsonResponse(200, [
+        {
+          id: 7,
+          name: "401k",
+          is_system: false,
+          exclude_from_budget: false,
+          csp_bucket: "investments",
+          is_pre_tax: false,
+          transaction_count: 0
+        }
+      ]);
+    });
+
+    renderPage();
+
+    const toggle = await screen.findByLabelText("Mark 401k as pre-tax");
+    await user.click(toggle);
+
+    await waitFor(() => {
+      expect(patched).not.toBeNull();
+    });
+    expect(patched!.url).toContain(`${API_BASE}/categories/7`);
+    expect(patched!.body).toEqual({ is_pre_tax: true });
   });
 
   it("disables Delete on categories with transactions", async () => {
@@ -177,6 +237,8 @@ describe("Categories page", () => {
           name: "Groceries",
           is_system: true,
           exclude_from_budget: false,
+          csp_bucket: "fixed",
+          is_pre_tax: false,
           transaction_count: 12
         }
       ] as Cat[])

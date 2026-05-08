@@ -6,9 +6,11 @@ from app.routers import (
     budget_router,
     category_router,
     coast_fire_router,
+    csp_router,
     forecast_router,
     import_router,
     mortgage_router,
+    net_income_router,
     payment_router,
     rules_router,
     snapshots_router,
@@ -31,6 +33,9 @@ app.include_router(coast_fire_router.router)
 app.include_router(mortgage_router.router)
 app.include_router(account_router.router)
 app.include_router(snapshots_router.router)
+app.include_router(net_income_router.router)
+app.include_router(net_income_router.paycheck_router)
+app.include_router(csp_router.router)
 
 app.add_middleware(
     CORSMiddleware,

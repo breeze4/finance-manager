@@ -6,6 +6,14 @@
  * categories are filtered from budget actuals, historical analysis, stats,
  * forecasts, and subscription detection — same surfaces that drop transfers.
  *
+ * Inline controls:
+ *   - Bucket dropdown : sets `csp_bucket` (Fixed/Investments/Savings/Guilt-Free
+ *                       or — for none). Income, Transfers, and excluded
+ *                       categories should stay at —.
+ *   - Pre-tax switch  : sets `is_pre_tax` for categories whose dollars come
+ *                       out of paychecks before deposit (e.g. 401(k)).
+ *   - Exclude switch  : sets `exclude_from_budget`.
+ *
  * Row actions:
  *   - Edit   : opens the form modal in edit mode (rename + flag).
  *   - Delete : only enabled when transaction_count === 0; backend returns 409
@@ -25,6 +33,13 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
   Table,
@@ -42,10 +57,24 @@ import {
   updateCategory,
   type CategoryCreate,
   type CategoryResponse,
-  type CategoryUpdate
+  type CategoryUpdate,
+  type CspBucket
 } from "@/api/categories";
 
 const CATEGORIES_KEY = ["categories"] as const;
+
+// Radix Select disallows the empty string as an item value, so we use a
+// sentinel for "no bucket" and convert at the boundary.
+const NO_BUCKET = "__none__";
+
+const BUCKET_LABELS: Record<CspBucket, string> = {
+  fixed: "Fixed",
+  investments: "Investments",
+  savings: "Savings",
+  guilt_free: "Guilt-Free"
+};
+
+const BUCKET_ORDER: CspBucket[] = ["fixed", "investments", "savings", "guilt_free"];
 
 type FormMode = "create" | "edit";
 
@@ -93,15 +122,14 @@ export default function Categories() {
     }
   });
 
-  // Inline-toggle uses the same updateCategory call but doesn't open the modal,
+  // Inline updates use the same updateCategory call but don't open the modal,
   // so we keep the mutation result silent and let invalidate refresh the row.
-  const toggleMut = useMutation<
+  const inlineMut = useMutation<
     CategoryResponse,
     Error,
-    { id: number; exclude_from_budget: boolean }
+    { id: number; payload: CategoryUpdate }
   >({
-    mutationFn: ({ id, exclude_from_budget }) =>
-      updateCategory(id, { exclude_from_budget }),
+    mutationFn: ({ id, payload }) => updateCategory(id, payload),
     onSuccess: () => invalidate()
   });
 
@@ -139,9 +167,11 @@ export default function Categories() {
         <div>
           <h2 className="text-xl font-semibold">Categories</h2>
           <p className="text-sm text-muted-foreground">
-            Manage transaction categories. Toggle "Exclude from budget" to hide
-            a category from spending stats, budget actuals, historical analysis,
-            and forecasts (e.g. mortgage payoff, principal-only payments).
+            Manage transaction categories. Assign each spending category to a
+            Conscious Spending Plan bucket (Fixed, Investments, Savings, or
+            Guilt-Free). Mark categories whose dollars come out of paychecks
+            before deposit as Pre-tax. Toggle "Exclude from budget" to drop a
+            category from spending stats and budget actuals entirely.
           </p>
         </div>
         <Button onClick={openCreate}>New category</Button>
@@ -161,6 +191,8 @@ export default function Categories() {
                 <TableHead>Name</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead className="text-right">Transactions</TableHead>
+                <TableHead>Bucket</TableHead>
+                <TableHead>Pre-tax</TableHead>
                 <TableHead>Exclude from budget</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -178,10 +210,47 @@ export default function Categories() {
                     {c.transaction_count}
                   </TableCell>
                   <TableCell>
+                    <Select
+                      value={c.csp_bucket ?? NO_BUCKET}
+                      onValueChange={v => {
+                        const next: CspBucket | null =
+                          v === NO_BUCKET ? null : (v as CspBucket);
+                        inlineMut.mutate({ id: c.id, payload: { csp_bucket: next } });
+                      }}
+                    >
+                      <SelectTrigger
+                        className="h-8 w-36"
+                        aria-label={`Bucket for ${c.name}`}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NO_BUCKET}>—</SelectItem>
+                        {BUCKET_ORDER.map(b => (
+                          <SelectItem key={b} value={b}>
+                            {BUCKET_LABELS[b]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={c.is_pre_tax}
+                      onCheckedChange={v =>
+                        inlineMut.mutate({ id: c.id, payload: { is_pre_tax: v } })
+                      }
+                      aria-label={`Mark ${c.name} as pre-tax`}
+                    />
+                  </TableCell>
+                  <TableCell>
                     <Switch
                       checked={c.exclude_from_budget}
                       onCheckedChange={v =>
-                        toggleMut.mutate({ id: c.id, exclude_from_budget: v })
+                        inlineMut.mutate({
+                          id: c.id,
+                          payload: { exclude_from_budget: v }
+                        })
                       }
                       aria-label={`Exclude ${c.name} from budget`}
                     />
@@ -294,15 +363,21 @@ function CategoryFormModal({
 }: CategoryFormModalProps) {
   const [name, setName] = useState("");
   const [excludeFromBudget, setExcludeFromBudget] = useState(false);
+  const [bucketValue, setBucketValue] = useState<string>(NO_BUCKET);
+  const [isPreTax, setIsPreTax] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     if (mode === "edit" && category) {
       setName(category.name);
       setExcludeFromBudget(category.exclude_from_budget);
+      setBucketValue(category.csp_bucket ?? NO_BUCKET);
+      setIsPreTax(category.is_pre_tax);
     } else {
       setName("");
       setExcludeFromBudget(false);
+      setBucketValue(NO_BUCKET);
+      setIsPreTax(false);
     }
   }, [open, mode, category]);
 
@@ -310,14 +385,26 @@ function CategoryFormModal({
   const nameInvalid = trimmedName.length === 0;
   const isSystem = mode === "edit" && category?.is_system;
 
+  const bucketPayload = (): CspBucket | null =>
+    bucketValue === NO_BUCKET ? null : (bucketValue as CspBucket);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (mode === "create") {
       if (nameInvalid) return;
-      onSubmitCreate({ name: trimmedName, exclude_from_budget: excludeFromBudget });
+      onSubmitCreate({
+        name: trimmedName,
+        exclude_from_budget: excludeFromBudget,
+        csp_bucket: bucketPayload(),
+        is_pre_tax: isPreTax
+      });
     } else if (mode === "edit" && category) {
-      // System categories cannot be renamed via this form — only the flag is patched.
-      const payload: CategoryUpdate = { exclude_from_budget: excludeFromBudget };
+      // System categories cannot be renamed via this form — only the flags are patched.
+      const payload: CategoryUpdate = {
+        exclude_from_budget: excludeFromBudget,
+        csp_bucket: bucketPayload(),
+        is_pre_tax: isPreTax
+      };
       if (!isSystem && trimmedName !== category.name) {
         if (nameInvalid) return;
         payload.name = trimmedName;
@@ -336,10 +423,10 @@ function CategoryFormModal({
             </DialogTitle>
             <DialogDescription>
               {mode === "create"
-                ? "Create a category. Mark it 'Exclude from budget' to keep its transactions out of spending analysis."
+                ? "Create a category. Assign a Conscious Spending Plan bucket and mark it pre-tax if its dollars come out of paychecks before deposit. Use 'Exclude from budget' to keep its transactions out of spending analysis."
                 : isSystem
-                  ? "System categories cannot be renamed. You can still toggle the budget-exclusion flag."
-                  : "Rename or toggle the budget-exclusion flag."}
+                  ? "System categories cannot be renamed. You can still adjust the bucket, pre-tax flag, and budget-exclusion flag."
+                  : "Rename or adjust the bucket, pre-tax flag, and budget-exclusion flag."}
             </DialogDescription>
           </DialogHeader>
 
@@ -355,6 +442,43 @@ function CategoryFormModal({
                 placeholder="Mortgage Payoff"
                 autoFocus={!isSystem}
                 disabled={isSystem ?? false}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="cat-bucket" className="text-sm font-medium">
+                Bucket
+              </label>
+              <Select value={bucketValue} onValueChange={setBucketValue}>
+                <SelectTrigger id="cat-bucket" aria-label="Bucket">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_BUCKET}>— (no bucket)</SelectItem>
+                  {BUCKET_ORDER.map(b => (
+                    <SelectItem key={b} value={b}>
+                      {BUCKET_LABELS[b]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Leave blank for income, transfer-only, and excluded categories.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">Pre-tax</p>
+                <p className="text-xs text-muted-foreground">
+                  Dollars come out of paychecks before deposit (e.g. 401(k),
+                  employer health premium).
+                </p>
+              </div>
+              <Switch
+                checked={isPreTax}
+                onCheckedChange={setIsPreTax}
+                aria-label="Pre-tax"
               />
             </div>
 

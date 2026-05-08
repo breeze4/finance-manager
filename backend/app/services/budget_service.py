@@ -315,6 +315,8 @@ class ActualVsBudgetEntry:
     actual_spend: float
     difference: float  # positive = under budget, negative = over budget
     percentage: float  # actual / target * 100
+    csp_bucket: str | None = None
+    is_pre_tax: bool = False
 
 
 @dataclass
@@ -377,6 +379,8 @@ def get_actual_vs_budget(db: Session, *, year: int) -> ActualVsBudgetResult:
     for budget in budgets:
         overrides = override_map.get(budget.id, {})
         cat_name = budget.category.name if budget.category else "Unknown"
+        cat_bucket = budget.category.csp_bucket if budget.category else None
+        is_pre_tax = bool(budget.category.is_pre_tax) if budget.category else False
 
         # For rollover budgets, accumulate surplus/deficit across months.
         rollover_carry = 0.0
@@ -390,7 +394,17 @@ def get_actual_vs_budget(db: Session, *, year: int) -> ActualVsBudgetResult:
             else:
                 target = base_target
 
-            actual = actual_map.get((budget.category_id, month), 0.0)
+            # Pre-tax categories never produce outflow transactions (the money
+            # is withheld before it lands in any tracked account). For tracking
+            # purposes, treat the planned baseline as the "actual" so the CSP
+            # actuals rollup and per-category variance row both reflect the
+            # money that's being spent on the user's behalf. Decision: pre-tax
+            # categories with no Budget row don't appear at all (consistent
+            # with the rest of the system).
+            if is_pre_tax:
+                actual = round(target, 2)
+            else:
+                actual = actual_map.get((budget.category_id, month), 0.0)
             diff = round(target - actual, 2)
             pct = round(actual / target * 100, 1) if target > 0 else 0.0
 
@@ -403,6 +417,8 @@ def get_actual_vs_budget(db: Session, *, year: int) -> ActualVsBudgetResult:
                     actual_spend=actual,
                     difference=diff,
                     percentage=pct,
+                    csp_bucket=cat_bucket,
+                    is_pre_tax=is_pre_tax,
                 )
             )
 
