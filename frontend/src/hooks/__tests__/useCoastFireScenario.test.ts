@@ -14,6 +14,7 @@ import {
   SCENARIOS_KEY
 } from "../useCoastFireScenario";
 import type { CoastFireScenario, CoastFireScenarioCreate } from "@/api/coastFire";
+import { API_BASE } from "@/api/_client";
 
 const SAMPLE: CoastFireScenario = {
   id: 1,
@@ -88,7 +89,7 @@ describe("useCoastFireScenario", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual([SAMPLE]);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(fetchSpy.mock.calls[0][0]).toBe("/api/calculators/coast-fire/scenarios");
+    expect(fetchSpy.mock.calls[0][0]).toBe(`${API_BASE}/calculators/coast-fire/scenarios`);
   });
 
   it("useActiveScenario returns the active scenario when present", async () => {
@@ -147,7 +148,7 @@ describe("useCoastFireScenario", () => {
       });
     });
 
-    expect(fetchSpy.mock.calls[0][0]).toBe("/api/calculators/coast-fire/scenarios/1");
+    expect(fetchSpy.mock.calls[0][0]).toBe(`${API_BASE}/calculators/coast-fire/scenarios/1`);
     expect(fetchSpy.mock.calls[0][1]).toMatchObject({ method: "PUT" });
     expect(returned?.current_savings).toBe(75000);
   });
@@ -162,7 +163,7 @@ describe("useCoastFireScenario", () => {
     });
 
     expect(fetchSpy.mock.calls[0][0]).toBe(
-      "/api/calculators/coast-fire/scenarios/1/activate"
+      `${API_BASE}/calculators/coast-fire/scenarios/1/activate`
     );
     expect(fetchSpy.mock.calls[0][1]).toMatchObject({ method: "POST" });
   });
@@ -176,7 +177,7 @@ describe("useCoastFireScenario", () => {
       await result.current.mutateAsync(7);
     });
 
-    expect(fetchSpy.mock.calls[0][0]).toBe("/api/calculators/coast-fire/scenarios/7");
+    expect(fetchSpy.mock.calls[0][0]).toBe(`${API_BASE}/calculators/coast-fire/scenarios/7`);
     expect(fetchSpy.mock.calls[0][1]).toMatchObject({ method: "DELETE" });
   });
 });

@@ -16,9 +16,9 @@
  *     date to format, so we fall back to `date` when it's missing.
  */
 
-import { request } from "./_client";
+import { API_BASE, request } from "./_client";
 
-const BASE = "/api/transactions";
+const BASE = `${API_BASE}/transactions`;
 
 // ---- public camelCase Transaction (canonical app-wide shape) ----
 

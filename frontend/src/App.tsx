@@ -17,10 +17,14 @@ import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
 
+// Vite's BASE_URL is "/finance/" in dev/prod and "/" under vitest. React
+// Router's basename wants no trailing slash and an empty string for root.
+const ROUTER_BASENAME = (import.meta.env?.BASE_URL ?? "/").replace(/\/+$/, "");
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter basename={ROUTER_BASENAME}>
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Overview />} />

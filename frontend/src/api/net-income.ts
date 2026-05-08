@@ -8,10 +8,10 @@
  * `effective_month` and `month` cross the wire as `"YYYY-MM"` strings; the
  * backend stores them as a `YYYYMM` integer internally.
  */
-import { request } from "./_client";
+import { API_BASE, request } from "./_client";
 
-const BASE = "/api/net-income";
-const PAYCHECK_BASE = "/api/paycheck-detection";
+const BASE = `${API_BASE}/net-income`;
+const PAYCHECK_BASE = `${API_BASE}/paycheck-detection`;
 
 export interface NetIncomePeriod {
   id: number;

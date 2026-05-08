@@ -20,9 +20,9 @@
  * map. The backend pre-sorts results by sum-of-totals desc, so taking the
  * top N is just `.slice(0, N)`.
  */
-import { request } from "./_client";
+import { API_BASE, request } from "./_client";
 
-const BASE = "/api/forecast";
+const BASE = `${API_BASE}/forecast`;
 
 export interface ForecastLineItemResponse {
   category_id: number | null;

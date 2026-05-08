@@ -20,9 +20,9 @@
  * let TanStack Query refetch. The query payloads are small.
  */
 
-import { request } from "./_client";
+import { API_BASE, request } from "./_client";
 
-const BASE = "/api/budget";
+const BASE = `${API_BASE}/budget`;
 
 // ---- public types ----
 

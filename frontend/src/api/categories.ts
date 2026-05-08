@@ -6,9 +6,9 @@
  * `is_system` and `transaction_count` are read directly by callers, no
  * camelCase adapter layer. Same convention as `subscriptions.ts`.
  */
-import { request } from "./_client";
+import { API_BASE, request } from "./_client";
 
-const BASE = "/api/categories";
+const BASE = `${API_BASE}/categories`;
 
 export type CspBucket = "fixed" | "investments" | "savings" | "guilt_free";
 

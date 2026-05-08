@@ -9,9 +9,9 @@
  * abs-d server-side). `MonthlyCategorySpending.total` is also positive.
  */
 
-import { request } from "./_client";
+import { API_BASE, request } from "./_client";
 
-const BASE = "/api/stats";
+const BASE = `${API_BASE}/stats`;
 
 export interface CategorySummary {
   category_id: number | null;

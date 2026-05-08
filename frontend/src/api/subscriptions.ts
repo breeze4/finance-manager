@@ -10,9 +10,9 @@
  * `amount_min`/`amount_max` are set on variable subs (`annual_estimate` is
  * always populated).
  */
-import { request } from "./_client";
+import { API_BASE, request } from "./_client";
 
-const BASE = "/api/subscriptions";
+const BASE = `${API_BASE}/subscriptions`;
 
 export interface SubscriptionResponse {
   id: number;

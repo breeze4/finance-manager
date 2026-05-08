@@ -4,6 +4,12 @@
  * from here rather than inlining the same boilerplate.
  */
 
+// Mirrors Vite's configured base path so dev (proxy) and prod (mounted at
+// /finance/) both resolve to the right backend URL. Strips a trailing slash
+// so callers can write `${API_BASE}/foo` without doubling the separator.
+const RAW_BASE = (import.meta.env?.BASE_URL ?? "/").replace(/\/+$/, "");
+export const API_BASE = `${RAW_BASE}/api`;
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {

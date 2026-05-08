@@ -14,9 +14,9 @@
  * not-yet-finalised type. Snake_case stays at the API boundary; the
  * Payments page reads these fields directly without normalisation.
  */
-import { request } from "./_client";
+import { API_BASE, request } from "./_client";
 
-const BASE = "/api/payments";
+const BASE = `${API_BASE}/payments`;
 
 export interface EmbeddedTransaction {
   id: number;

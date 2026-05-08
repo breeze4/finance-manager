@@ -7,11 +7,11 @@
  * (notably `useActiveScenario`) can swallow 404s as "no scenario yet".
  */
 
-import { request } from "./_client";
+import { API_BASE, request } from "./_client";
 
 export { ApiError } from "./_client";
 
-const BASE = "/api/calculators/mortgage/scenarios";
+const BASE = `${API_BASE}/calculators/mortgage/scenarios`;
 
 export interface MortgageScenario {
   id: number;

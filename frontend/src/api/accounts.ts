@@ -5,11 +5,11 @@
  * as thrown `ApiError` instances with the HTTP status preserved.
  */
 
-import { request } from "./_client";
+import { API_BASE, request } from "./_client";
 
 export { ApiError } from "./_client";
 
-const BASE = "/api/accounts";
+const BASE = `${API_BASE}/accounts`;
 
 export type AccountType =
   | "checking"

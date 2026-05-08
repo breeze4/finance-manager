@@ -11,10 +11,10 @@
  * the `BucketRollup` shape; on the actuals path the `planned_percentage`
  * and `tracking_status` fields are populated, on planning they are null.
  */
-import { request } from "./_client";
+import { API_BASE, request } from "./_client";
 import type { CspBucket } from "./categories";
 
-const BASE = "/api/csp";
+const BASE = `${API_BASE}/csp`;
 
 export type CspMode = "planning" | "actuals";
 export type BucketStatus = "under" | "in-range" | "over";

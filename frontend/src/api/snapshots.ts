@@ -8,7 +8,7 @@
  */
 
 import type { AccountType } from "@/api/accounts";
-import { request } from "./_client";
+import { API_BASE, request } from "./_client";
 
 export { ApiError } from "./_client";
 
@@ -34,14 +34,14 @@ export function postSnapshotBatch(
   asOfDate: string,
   entries: SnapshotBatchEntry[]
 ): Promise<SnapshotBatchResponse> {
-  return request<SnapshotBatchResponse>("/api/snapshots/batch", {
+  return request<SnapshotBatchResponse>(`${API_BASE}/snapshots/batch`, {
     method: "POST",
     body: JSON.stringify({ as_of_date: asOfDate, entries })
   });
 }
 
 export function getLatestBalances(): Promise<LatestBalance[]> {
-  return request<LatestBalance[]>("/api/net-worth/latest");
+  return request<LatestBalance[]>(`${API_BASE}/net-worth/latest`);
 }
 
 export interface NetWorthPoint {
@@ -57,5 +57,5 @@ export function getNetWorthSeries(
   if (startDate) params.append("start_date", startDate);
   if (endDate) params.append("end_date", endDate);
   const qs = params.toString();
-  return request<NetWorthPoint[]>(qs ? `/api/net-worth?${qs}` : `/api/net-worth`);
+  return request<NetWorthPoint[]>(qs ? `${API_BASE}/net-worth?${qs}` : `${API_BASE}/net-worth`);
 }
