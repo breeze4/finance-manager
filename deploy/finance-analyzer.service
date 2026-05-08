@@ -4,7 +4,7 @@ Description=Finance Analyzer
 [Service]
 Type=simple
 WorkingDirectory=%h/dev/finance-analyzer/backend
-ExecStart=%h/dev/finance-analyzer/backend/venv/bin/uvicorn app.main:mounted_app --host 0.0.0.0 --port 8001
+ExecStart=%h/dev/finance-analyzer/backend/venv/bin/uvicorn app.main:mounted_app --host 0.0.0.0 --port 8003
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1

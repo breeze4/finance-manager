@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily Finance Analyzer DB backup
+
+[Timer]
+# 03:00 local time. Persistent=true so a missed run (laptop asleep,
+# host powered off) fires on next boot rather than waiting another day.
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

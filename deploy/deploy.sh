@@ -9,7 +9,7 @@ set -euo pipefail
 
 HOST=finance-host
 APP_DIR=dev/finance-analyzer
-PORT=8001
+PORT=8003
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -52,18 +52,32 @@ ssh "$HOST" "cd ~/$APP_DIR/backend && venv/bin/pip install -q --upgrade pip && v
 echo "==> [7/8] Run alembic migrations"
 ssh "$HOST" "cd ~/$APP_DIR/backend && venv/bin/alembic upgrade head"
 
-echo "==> [8/8] Install/refresh systemd unit and restart"
-ssh "$HOST" "mkdir -p ~/.config/systemd/user && cp ~/$APP_DIR/deploy/finance-analyzer.service ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable finance-analyzer >/dev/null 2>&1 || true && systemctl --user restart finance-analyzer"
+echo "==> [8/8] Install/refresh systemd units, restart service, ensure backup timer"
+ssh "$HOST" "
+  set -e
+  mkdir -p ~/.config/systemd/user ~/backups/finance
+  cp ~/$APP_DIR/deploy/finance-analyzer.service          ~/.config/systemd/user/
+  cp ~/$APP_DIR/deploy/finance-analyzer-backup.service   ~/.config/systemd/user/
+  cp ~/$APP_DIR/deploy/finance-analyzer-backup.timer     ~/.config/systemd/user/
+  chmod +x ~/$APP_DIR/deploy/backup-finance-db.sh
+  systemctl --user daemon-reload
+  systemctl --user enable finance-analyzer >/dev/null 2>&1 || true
+  systemctl --user enable --now finance-analyzer-backup.timer >/dev/null 2>&1 || true
+  systemctl --user restart finance-analyzer
+"
 
 # Give the service a moment, then verify it answered an HTTP request.
+# Match the JSON body (not just status) — neighbouring services on this host
+# have SPA catch-alls that return 200 + HTML for unknown paths.
 sleep 2
 echo "==> Health check"
-if ssh "$HOST" "curl -fsS http://127.0.0.1:$PORT/finance/api/health"; then
-  echo
+HEALTH=$(ssh "$HOST" "curl -fsS http://127.0.0.1:$PORT/finance/api/health" || echo "")
+if echo "$HEALTH" | grep -q '"status":"ok"'; then
+  echo "$HEALTH"
   echo "==> Deploy OK. http://$HOST:$PORT/finance/"
 else
-  echo
-  echo "!! Health check failed. Last service logs:"
+  echo "!! Health check failed. Got: ${HEALTH:-<empty>}"
+  echo "!! Last service logs:"
   ssh "$HOST" "journalctl --user -u finance-analyzer -n 50 --no-pager" || true
   exit 1
 fi

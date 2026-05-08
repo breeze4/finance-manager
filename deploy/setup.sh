@@ -9,9 +9,10 @@ set -euo pipefail
 
 APP_DIR=~/dev/finance-analyzer
 
-echo "==> Creating app + data directories"
+echo "==> Creating app + data + backup directories"
 mkdir -p "$APP_DIR/data"
 mkdir -p "$APP_DIR/backend"
+mkdir -p ~/backups/finance
 
 echo "==> Verifying Python version (need 3.11+)"
 PY=$(command -v python3.12 || command -v python3.11 || command -v python3)

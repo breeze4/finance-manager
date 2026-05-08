@@ -1,0 +1,8 @@
+[Unit]
+Description=Finance Analyzer DB backup snapshot
+
+[Service]
+Type=oneshot
+ExecStart=%h/dev/finance-analyzer/deploy/backup-finance-db.sh
+Nice=10
+IOSchedulingClass=idle
