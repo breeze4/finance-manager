@@ -11,6 +11,7 @@ from app.schemas.forecast import (
     MethodsResponse,
     YoYEntryResponse,
 )
+from app.services.category_filters import not_excluded_from_budget
 from app.services.forecast.registry import available_methods, get_forecaster
 
 router = APIRouter(prefix="/api/forecast", tags=["forecast"])
@@ -28,6 +29,7 @@ def year_over_year(db: Session = Depends(get_db)):
         db.query(Transaction)
         .filter(
             Transaction.is_transfer.is_(False),
+            not_excluded_from_budget(),
             Transaction.amount < 0,
         )
         .join(Category, Transaction.category_id == Category.id, isouter=True)

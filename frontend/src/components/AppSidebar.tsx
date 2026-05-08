@@ -8,6 +8,7 @@ import {
   CreditCard,
   Home,
   Wallet,
+  Tag,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -31,6 +32,7 @@ const navItems = [
   { title: "Coast FIRE", url: "/coast-fire", icon: TrendingUp },
   { title: "Mortgage", url: "/mortgage", icon: Home },
   { title: "Accounts", url: "/accounts", icon: Wallet },
+  { title: "Categories", url: "/categories", icon: Tag },
 ];
 
 export function AppSidebar() {

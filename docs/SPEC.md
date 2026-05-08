@@ -61,6 +61,18 @@ Initial categories derived from source data (Chase's Category field, inferred fr
 
 Categories include spending types (Groceries, Dining, Bills & Utilities, etc.) as well as Income, Investments, and Transfers — all at the same level.
 
+### User-Managed Categories
+
+Beyond the seeded system categories, users can create their own categories for cases the canonical set doesn't cover (e.g. "Mortgage Payoff", "Tax Refund Hold"). User categories live in the same flat taxonomy and are first-class — assignable from the same dropdowns, eligible for classification rules, etc.
+
+A dedicated Categories management view lets users list, create, rename, delete (only when no transactions reference it), and toggle the budget-exclusion flag described below. System categories cannot be renamed or deleted but can have the exclusion flag toggled.
+
+### Excluded-From-Budget Categories
+
+Each category carries an `exclude_from_budget` flag. When set, every transaction in that category is treated like a transfer for analytical purposes: it is filtered out of the same surfaces that `is_transfer=true` filters today — budget actuals, historical analysis, spending stats, forecasts, and subscription detection. The transactions remain visible in the standard transactions list and can still be reviewed/edited; the flag affects only the analytical/spending views.
+
+Use cases: mortgage principal payoffs, brokerage transfers that already get categorized as Investments but shouldn't inflate spending, large one-time savings moves, tax escrow movements. Acts as a category-level companion to the per-transaction `is_transfer` flag — the latter remains the right tool for matched payment pairs (BECU↔Chase), while `exclude_from_budget` is the right tool for "this whole bucket of spending is not really spending."
+
 ## Transaction Classification
 
 ### Auto-Classification

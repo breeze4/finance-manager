@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import Category, Subscription, Transaction
+from app.services.category_filters import not_excluded_from_budget
 
 # Standard periods in days and their labels.
 _PERIODS = [
@@ -75,6 +76,7 @@ def detect_subscriptions(db: Session) -> DetectionResult:
         db.query(Transaction)
         .filter(
             Transaction.is_transfer.is_(False),
+            not_excluded_from_budget(),
             Transaction.amount < 0,
         )
         .order_by(Transaction.vendor, Transaction.date)

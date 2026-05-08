@@ -4,6 +4,7 @@ from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
 from app.models import Category, Transaction
+from app.services.category_filters import not_excluded_from_budget
 
 
 def get_summary(
@@ -12,8 +13,11 @@ def get_summary(
     date_from: date | None = None,
     date_to: date | None = None,
 ) -> dict:
-    """Compute spending summary. All spending queries exclude transfers."""
-    base = db.query(Transaction).filter(Transaction.is_transfer.is_(False))
+    """Compute spending summary. Excludes transfers and exclude-from-budget categories."""
+    base = db.query(Transaction).filter(
+        Transaction.is_transfer.is_(False),
+        not_excluded_from_budget(),
+    )
 
     if date_from is not None:
         base = base.filter(Transaction.date >= date_from)
@@ -87,9 +91,10 @@ def get_monthly_stats(
     year: int,
     category_id: int | None = None,
 ) -> list[dict]:
-    """Per-month spending by category. Excludes transfers."""
+    """Per-month spending by category. Excludes transfers and exclude-from-budget categories."""
     base = db.query(Transaction).filter(
         Transaction.is_transfer.is_(False),
+        not_excluded_from_budget(),
         Transaction.amount < 0,
         extract("year", Transaction.date) == year,
     )

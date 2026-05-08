@@ -6,6 +6,7 @@ from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
 from app.models import Category, Subscription, Transaction
+from app.services.category_filters import not_excluded_from_budget
 from app.services.forecast.base import (
     BaseForecaster,
     ForecastLineItem,
@@ -94,6 +95,7 @@ class SimpleForecaster(BaseForecaster):
             db.query(Transaction)
             .filter(
                 Transaction.is_transfer.is_(False),
+                not_excluded_from_budget(),
                 Transaction.amount < 0,
                 extract("year", Transaction.date) == year,
             )
@@ -123,6 +125,7 @@ class SimpleForecaster(BaseForecaster):
             db.query(Transaction)
             .filter(
                 Transaction.is_transfer.is_(False),
+                not_excluded_from_budget(),
                 Transaction.amount < 0,
             )
             .join(Category, Transaction.category_id == Category.id, isouter=True)
@@ -167,6 +170,7 @@ class SimpleForecaster(BaseForecaster):
             db.query(Transaction)
             .filter(
                 Transaction.is_transfer.is_(False),
+                not_excluded_from_budget(),
                 Transaction.amount < 0,
             )
             .join(Category, Transaction.category_id == Category.id, isouter=True)

@@ -11,6 +11,7 @@ import Payments from "@/pages/Payments";
 import CoastFire from "@/pages/CoastFire";
 import Mortgage from "@/pages/Mortgage";
 import Accounts from "@/pages/Accounts";
+import Categories from "@/pages/Categories";
 import NetWorth from "@/pages/NetWorth";
 import NotFound from "@/pages/NotFound";
 
@@ -31,6 +32,7 @@ export default function App() {
             <Route path="/coast-fire" element={<CoastFire />} />
             <Route path="/mortgage" element={<Mortgage />} />
             <Route path="/accounts" element={<Accounts />} />
+            <Route path="/categories" element={<Categories />} />
             <Route path="/net-worth" element={<NetWorth />} />
             <Route path="*" element={<NotFound />} />
           </Route>

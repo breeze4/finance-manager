@@ -335,8 +335,48 @@ class TestCategoryAPI:
     def test_create_category(self, client: TestClient):
         resp = client.post("/api/categories", json={"name": "Pets"})
         assert resp.status_code == 201
-        assert resp.json()["name"] == "Pets"
-        assert resp.json()["is_system"] is False
+        body = resp.json()
+        assert body["name"] == "Pets"
+        assert body["is_system"] is False
+        assert body["exclude_from_budget"] is False
+
+    def test_create_category_with_exclude_flag(self, client: TestClient):
+        resp = client.post(
+            "/api/categories",
+            json={"name": "Mortgage Payoff", "exclude_from_budget": True},
+        )
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["exclude_from_budget"] is True
+
+    def test_patch_exclude_flag_only(self, client: TestClient, seed_categories):
+        gid = seed_categories["Groceries"]
+        resp = client.patch(
+            f"/api/categories/{gid}",
+            json={"exclude_from_budget": True},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["name"] == "Groceries"
+        assert body["exclude_from_budget"] is True
+
+    def test_patch_flag_on_system_category(self, client: TestClient, seed_categories):
+        # Toggling exclude_from_budget on a system category is allowed.
+        tid = seed_categories["Transfers"]
+        resp = client.patch(
+            f"/api/categories/{tid}",
+            json={"exclude_from_budget": True},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["exclude_from_budget"] is True
+
+    def test_patch_no_fields_is_noop(self, client: TestClient, seed_categories):
+        gid = seed_categories["Groceries"]
+        resp = client.patch(f"/api/categories/{gid}", json={})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["name"] == "Groceries"
+        assert body["exclude_from_budget"] is False
 
     def test_create_duplicate(self, client: TestClient, seed_categories):
         resp = client.post("/api/categories", json={"name": "Groceries"})

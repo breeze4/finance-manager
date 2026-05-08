@@ -6,6 +6,7 @@ from sqlalchemy import extract, func
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import Budget, BudgetMonthlyOverride, Category, Transaction
+from app.services.category_filters import not_excluded_from_budget
 
 
 @dataclass
@@ -33,10 +34,12 @@ def get_historical_analysis(
 ) -> list[CategoryHistoricalStats]:
     """Compute per-category historical spending statistics.
 
-    All queries exclude transfers and only consider outflows (amount < 0).
+    All queries exclude transfers and exclude-from-budget categories, and
+    only consider outflows (amount < 0).
     """
     base = db.query(Transaction).filter(
         Transaction.is_transfer.is_(False),
+        not_excluded_from_budget(),
         Transaction.amount < 0,
     )
 
@@ -347,6 +350,7 @@ def get_actual_vs_budget(db: Session, *, year: int) -> ActualVsBudgetResult:
         db.query(Transaction)
         .filter(
             Transaction.is_transfer.is_(False),
+            not_excluded_from_budget(),
             Transaction.amount < 0,
             extract("year", Transaction.date) == year,
         )

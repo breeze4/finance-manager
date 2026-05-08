@@ -14,15 +14,18 @@ export interface CategoryResponse {
   id: number;
   name: string;
   is_system: boolean;
+  exclude_from_budget: boolean;
   transaction_count: number;
 }
 
 export interface CategoryCreate {
   name: string;
+  exclude_from_budget?: boolean;
 }
 
 export interface CategoryUpdate {
-  name: string;
+  name?: string;
+  exclude_from_budget?: boolean;
 }
 
 export function listCategories(): Promise<CategoryResponse[]> {
