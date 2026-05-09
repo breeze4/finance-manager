@@ -1,6 +1,10 @@
 from app.schemas.budget import CategoryHistoricalStatsResponse
 from app.schemas.category import CategoryCreate, CategoryResponse, CategoryUpdate
-from app.schemas.payment import PaymentListItem
+from app.schemas.payment import (
+    PaymentListItem,
+    PaymentSeriesBucket,
+    PaymentSeriesResponse,
+)
 from app.schemas.stats import (
     CategorySummary,
     MonthlyCategorySpending,
@@ -30,6 +34,8 @@ __all__ = [
     "MonthlyStatsResponse",
     "PaginatedTransactions",
     "PaymentListItem",
+    "PaymentSeriesBucket",
+    "PaymentSeriesResponse",
     "SubscriptionDetectionResult",
     "SubscriptionResponse",
     "SubscriptionUpdate",

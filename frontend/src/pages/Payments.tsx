@@ -20,7 +20,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { listAccounts, type Account } from "@/api/accounts";
-import { listPayments, type PaymentListItem } from "@/api/payments";
+import {
+  getSeries,
+  listPayments,
+  type PaymentListItem,
+} from "@/api/payments";
+import { ChargesVsPaymentsChart } from "@/components/payments/ChargesVsPaymentsChart";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { useGlobalFilters } from "@/hooks/useGlobalFilters";
 
@@ -53,6 +58,23 @@ export default function Payments() {
     ],
     queryFn: () =>
       listPayments({
+        accountId,
+        startDate: resolvedRange.dateFrom ?? null,
+        endDate: resolvedRange.dateTo ?? null,
+      }),
+  });
+
+  const seriesQ = useQuery({
+    queryKey: [
+      "payments-series",
+      {
+        accountId,
+        startDate: resolvedRange.dateFrom ?? null,
+        endDate: resolvedRange.dateTo ?? null,
+      },
+    ],
+    queryFn: () =>
+      getSeries({
         accountId,
         startDate: resolvedRange.dateFrom ?? null,
         endDate: resolvedRange.dateTo ?? null,
@@ -104,6 +126,13 @@ export default function Payments() {
           <p className="text-2xl font-bold mt-1">{formatCurrency(total)}</p>
         </div>
       </div>
+
+      {seriesQ.data && seriesQ.data.buckets.length > 0 ? (
+        <ChargesVsPaymentsChart
+          bucketSize={seriesQ.data.bucket_size}
+          buckets={seriesQ.data.buckets}
+        />
+      ) : null}
 
       {paymentsQ.error ? (
         <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">

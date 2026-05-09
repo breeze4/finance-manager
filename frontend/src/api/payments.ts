@@ -34,3 +34,29 @@ export function listPayments(params: ListPaymentsParams = {}): Promise<PaymentLi
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
   return request<PaymentListItem[]>(`${BASE}${suffix}`);
 }
+
+export interface PaymentSeriesBucket {
+  label: string;
+  charges_total: number;
+  payments_total: number;
+}
+
+export interface PaymentSeriesResponse {
+  bucket_size: "month" | "quarter" | "year";
+  buckets: PaymentSeriesBucket[];
+}
+
+export interface GetSeriesParams {
+  accountId?: number | null;
+  startDate?: string | null;
+  endDate?: string | null;
+}
+
+export function getSeries(params: GetSeriesParams = {}): Promise<PaymentSeriesResponse> {
+  const qs = new URLSearchParams();
+  if (params.accountId != null) qs.append("account_id", String(params.accountId));
+  if (params.startDate) qs.append("start_date", params.startDate);
+  if (params.endDate) qs.append("end_date", params.endDate);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request<PaymentSeriesResponse>(`${BASE}/series${suffix}`);
+}
