@@ -107,6 +107,19 @@ export function CoastFireForm({ state, onChange, errors }: CoastFireFormProps) {
     onChange(syncFromTarget({ ...state, target_retirement_amount: Number.isFinite(num) ? num : 0 }));
   };
 
+  const withdrawalRateHandler = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    const num = v === "" ? 0 : Number(v);
+    const next = { ...state, withdrawal_rate: Number.isFinite(num) ? num : 0 };
+    if (next.last_edited_field === "monthly") {
+      onChange(syncFromMonthly(next));
+    } else if (next.last_edited_field === "yearly") {
+      onChange(syncFromYearly(next));
+    } else {
+      onChange(syncFromTarget(next));
+    }
+  };
+
   const errClass = (key: string) =>
     errors?.[key] ? "border-destructive focus-visible:ring-destructive" : "";
 
@@ -241,7 +254,7 @@ export function CoastFireForm({ state, onChange, errors }: CoastFireFormProps) {
           max={8}
           step={0.1}
           value={state.withdrawal_rate}
-          onChange={numField("withdrawal_rate")}
+          onChange={withdrawalRateHandler}
           className={errClass("withdrawalRate")}
         />
       </Field>
