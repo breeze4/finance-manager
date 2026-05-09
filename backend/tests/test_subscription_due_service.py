@@ -451,3 +451,51 @@ def test_remaining_excludes_subs_outside_range(db: Session):
         db, date(2026, 5, 1), date(2026, 5, 31)
     )
     assert result["count"] == 0
+
+
+def test_remaining_excludes_subs_in_excluded_categories(db: Session):
+    excluded = Category(name="Transfers Out", is_system=False, exclude_from_budget=True)
+    db.add(excluded)
+    db.commit()
+    db.refresh(excluded)
+
+    _make_sub(
+        db,
+        vendor="Transfer Sub",
+        frequency="monthly",
+        last_charge_date=date(2026, 4, 10),
+        amount=5000.0,
+        category_id=excluded.id,
+    )
+    result = subscription_due_service.subscriptions_remaining(
+        db, date(2026, 5, 1), date(2026, 5, 31)
+    )
+    assert result["count"] == 0
+
+
+def test_already_hit_excludes_subs_in_excluded_categories(db: Session):
+    excluded = Category(name="Transfers Out", is_system=False, exclude_from_budget=True)
+    db.add(excluded)
+    db.commit()
+    db.refresh(excluded)
+
+    _make_sub(
+        db,
+        vendor="Transfer Sub",
+        frequency="monthly",
+        last_charge_date=date(2026, 4, 5),
+        amount=5000.0,
+        category_id=excluded.id,
+    )
+    # A matching transaction sits in the month — without the filter,
+    # the sub would be reported as hit. With the filter it must not.
+    _make_txn(
+        db,
+        vendor="Transfer Sub",
+        amount=-5000.0,
+        txn_date=date(2026, 5, 5),
+        category_id=excluded.id,
+        import_hash="excl_hit_1",
+    )
+    hits = subscription_due_service.subscriptions_already_hit(db, 202605)
+    assert excluded.id not in hits

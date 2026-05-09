@@ -163,6 +163,50 @@ class TestExcludeFromBudgetAtEverySurface:
             for item in month.get("line_items", []):
                 assert item["category_name"] != "Mortgage Payoff"
 
+    def test_excluded_subs_skipped_in_forecast_projection(
+        self, client: TestClient, db: Session, seed_categories
+    ):
+        from app.models import Subscription
+
+        gid = seed_categories["Groceries"]
+        excluded_id = _add_excluded_category(db)
+
+        # Some grocery history so the projection has something to anchor.
+        for m in range(1, 6):
+            _make_txn(
+                db,
+                amount=-300,
+                category_id=gid,
+                txn_date=date(2025, m, 5),
+                vendor="Grocer",
+                import_hash=f"sf_g_{m}",
+            )
+
+        # Stale active sub on an excluded category — leftover from before
+        # the exclusion was enforced. Must not feed into projections.
+        db.add(
+            Subscription(
+                vendor="Big Transfer",
+                frequency="monthly",
+                subscription_type="fixed",
+                amount=50000.0,
+                annual_estimate=600000.0,
+                last_charge_date=date(2025, 5, 1),
+                category_id=excluded_id,
+                is_active=True,
+            )
+        )
+        db.commit()
+
+        resp = client.get("/api/forecast/2025?method=simple")
+        assert resp.status_code == 200
+        data = resp.json()
+        for month in data["months"]:
+            for item in month.get("line_items", []):
+                assert item["category_id"] != excluded_id, (
+                    f"excluded sub leaked into forecast month {month['month']}"
+                )
+
     def test_excluded_from_subscription_detection(self, db: Session, seed_categories):
         from app.models import Subscription
 

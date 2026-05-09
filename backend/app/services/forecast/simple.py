@@ -2,7 +2,7 @@ import statistics
 from collections import defaultdict
 from datetime import date
 
-from sqlalchemy import extract, func
+from sqlalchemy import extract, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Category, Subscription, Transaction
@@ -211,8 +211,23 @@ class SimpleForecaster(BaseForecaster):
         return factors
 
     def _get_subscription_monthly(self, db: Session) -> dict[int | None, float]:
-        """Returns {category_id: monthly_equivalent} from active subscriptions."""
-        subs = db.query(Subscription).filter(Subscription.is_active.is_(True)).all()
+        """Returns {category_id: monthly_equivalent} from active subscriptions.
+
+        Skips subs whose category is `exclude_from_budget=True` — same
+        structural filter the rest of the forecast pipeline applies.
+        """
+        excluded = select(Category.id).where(Category.exclude_from_budget.is_(True))
+        subs = (
+            db.query(Subscription)
+            .filter(
+                Subscription.is_active.is_(True),
+                or_(
+                    Subscription.category_id.is_(None),
+                    Subscription.category_id.notin_(excluded),
+                ),
+            )
+            .all()
+        )
 
         multipliers = {
             "weekly": 52 / 12,

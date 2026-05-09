@@ -54,6 +54,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Budget, Category
@@ -414,14 +415,16 @@ def _subs_due_this_month(db: Session, year: int, month: int) -> dict[int, Decima
 
     "Due this month" means ``last_charge_date + frequency_days`` lands in
     the target calendar month. Only active subscriptions with a
-    non-NULL category contribute.
+    non-NULL, non-excluded category contribute.
     """
     from app.models import Subscription
 
+    excluded = select(Category.id).where(Category.exclude_from_budget.is_(True))
     subs: list[Subscription] = (
         db.query(Subscription)
         .filter(Subscription.is_active.is_(True))
         .filter(Subscription.category_id.isnot(None))
+        .filter(Subscription.category_id.notin_(excluded))
         .all()
     )
     out: dict[int, Decimal] = {}

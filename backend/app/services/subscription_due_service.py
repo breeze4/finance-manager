@@ -34,6 +34,7 @@ from calendar import monthrange
 from datetime import date, timedelta
 from decimal import Decimal
 
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Category, Subscription, Transaction
@@ -166,6 +167,7 @@ def subscriptions_already_hit(db: Session, year_month: int) -> dict[int, Decimal
     Excluded from the result:
       - subscriptions with ``is_active = False``
       - subscriptions with ``category_id = NULL``
+      - subscriptions whose category has ``exclude_from_budget = True``
     """
     year = year_month // 100
     month = year_month % 100
@@ -175,10 +177,12 @@ def subscriptions_already_hit(db: Session, year_month: int) -> dict[int, Decimal
     month_start = date(year, month, 1)
     month_end = date(year, month, monthrange(year, month)[1])
 
+    excluded = select(Category.id).where(Category.exclude_from_budget.is_(True))
     subs: list[Subscription] = (
         db.query(Subscription)
         .filter(Subscription.is_active.is_(True))
         .filter(Subscription.category_id.isnot(None))
+        .filter(Subscription.category_id.notin_(excluded))
         .all()
     )
     if not subs:
@@ -235,6 +239,10 @@ def subscriptions_remaining(db: Session, date_from: date, date_to: date) -> dict
 
     A subscription is considered "already matched" iff a non-transfer
     transaction in the requested month matches by ±5% / ±7-day rules.
+
+    Subscriptions whose category has ``exclude_from_budget = True`` are
+    skipped — same structural filter applied across the spending pipeline.
+    Uncategorized subs (``category_id IS NULL``) still flow through.
     """
     if date_from > date_to:
         return {"total": Decimal("0"), "count": 0, "subscriptions": []}
@@ -242,7 +250,18 @@ def subscriptions_remaining(db: Session, date_from: date, date_to: date) -> dict
     year = date_to.year
     month = date_to.month
 
-    subs: list[Subscription] = db.query(Subscription).filter(Subscription.is_active.is_(True)).all()
+    excluded = select(Category.id).where(Category.exclude_from_budget.is_(True))
+    subs: list[Subscription] = (
+        db.query(Subscription)
+        .filter(
+            Subscription.is_active.is_(True),
+            or_(
+                Subscription.category_id.is_(None),
+                Subscription.category_id.notin_(excluded),
+            ),
+        )
+        .all()
+    )
 
     # Index categories for the display name of remaining subs.
     cat_names: dict[int, str] = {c.id: c.name for c in db.query(Category).all()}

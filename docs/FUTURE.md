@@ -33,6 +33,10 @@ target a vendor directly or continue to pattern-match raw descriptions but
 resolve to a `vendor_id`. Migration needs a backfill that groups existing
 transactions by current vendor string (post-rule) into vendor rows.
 
+## Forecast vs Budget
+
+The forecasts should be based on the set budgets for upcoming months and this should be incorporated into the historical budget screen. Work on this after the latest budget page revisions.
+
 
 _Promoted 2026-05-08:_
 - Payments page redesign → `docs/specs/2026-05-08-04-payments-redesign.md`
