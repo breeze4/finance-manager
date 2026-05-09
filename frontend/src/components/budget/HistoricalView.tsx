@@ -2,7 +2,7 @@
  * HistoricalView — per-category historical spending stats.
  *
  * Renders a table (avg, median, range, std dev, 80% CI, trend, seasonal
- * months) plus a stacked-bar chart of the top 6 categories' month-by-month
+ * months) plus a stacked-area chart of the top 6 categories' month-by-month
  * totals. Pure presentation: parent (`pages/Budget.tsx`) owns the query
  * and passes `stats` in.
  *
@@ -12,10 +12,10 @@
  */
 
 import {
-  Bar,
-  BarChart,
+  Area,
+  AreaChart,
   CartesianGrid,
-  LabelList,
+  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -154,45 +154,29 @@ export function HistoricalView({ stats }: { stats: CategoryHistoricalStats[] }) 
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={350}>
-              <BarChart data={chartData} margin={{ right: 110 }}>
+              <AreaChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(225, 15%, 18%)" />
                 <XAxis dataKey="month" tick={{ fontSize: 11, fill: "hsl(220, 10%, 55%)" }} />
-                <YAxis tick={{ fontSize: 11, fill: "hsl(220, 10%, 55%)" }} />
+                <YAxis
+                  tick={{ fontSize: 11, fill: "hsl(220, 10%, 55%)" }}
+                  tickFormatter={(v: number) => formatCurrency(v)}
+                />
                 <Tooltip
                   {...tooltipStyle}
                   formatter={(v: number) => formatCurrency(v)}
                 />
+                <Legend />
                 {trendCategories.map((cat, i) => (
-                  <Bar
+                  <Area
                     key={cat}
                     dataKey={cat}
                     stackId="spending"
                     fill={chartColors[i % chartColors.length]}
+                    stroke={chartColors[i % chartColors.length]}
                     isAnimationActive={false}
-                  >
-                    <LabelList
-                      content={(props) => {
-                        const { x, y, width, height, index } =
-                          props as Record<string, number>;
-                        if (index !== chartData.length - 1) return null;
-                        if (!height || height < 14) return null;
-                        return (
-                          <text
-                            x={x + width + 6}
-                            y={y + height / 2}
-                            fill={chartColors[i % chartColors.length]}
-                            fontSize={11}
-                            fontWeight={500}
-                            dominantBaseline="middle"
-                          >
-                            {cat}
-                          </text>
-                        );
-                      }}
-                    />
-                  </Bar>
+                  />
                 ))}
-              </BarChart>
+              </AreaChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
