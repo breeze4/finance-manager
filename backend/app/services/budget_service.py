@@ -1,6 +1,7 @@
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import extract, func
@@ -242,6 +243,12 @@ def set_budget(
     return budget
 
 
+def _is_past_month(year: int, month: int) -> bool:
+    """Return True when (year, month) is strictly before the current month."""
+    today = date.today()
+    return (year, month) < (today.year, today.month)
+
+
 def set_monthly_override(
     db: Session,
     *,
@@ -250,7 +257,17 @@ def set_monthly_override(
     month: int,
     amount: float,
 ) -> BudgetMonthlyOverride:
-    """Set a per-month budget override. Creates the parent budget if needed."""
+    """Set a per-month budget override. Creates the parent budget if needed.
+
+    Past-month overrides are rejected: per-month override writes are locked
+    once their (year, month) is strictly before the current month. Past-year
+    baseline edits go through ``set_budget`` instead.
+    """
+    if _is_past_month(year, month):
+        raise ValueError(
+            f"Cannot set override for past month {year}-{month:02d}; "
+            "only baseline edits are allowed for past periods"
+        )
     budget = db.query(Budget).filter(Budget.category_id == category_id, Budget.year == year).first()
     if budget is None:
         return None
@@ -285,7 +302,15 @@ def delete_monthly_override(
     year: int,
     month: int,
 ) -> bool:
-    """Remove a monthly override. Returns True if deleted, False if not found."""
+    """Remove a monthly override. Returns True if deleted, False if not found.
+
+    Past-month overrides are locked — see ``set_monthly_override``.
+    """
+    if _is_past_month(year, month):
+        raise ValueError(
+            f"Cannot delete override for past month {year}-{month:02d}; "
+            "past-month overrides are locked"
+        )
     budget = db.query(Budget).filter(Budget.category_id == category_id, Budget.year == year).first()
     if budget is None:
         return False

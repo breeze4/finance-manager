@@ -101,13 +101,16 @@ def set_monthly_override(
 ):
     if month < 1 or month > 12:
         raise HTTPException(status_code=400, detail="Month must be 1-12")
-    override = budget_service.set_monthly_override(
-        db,
-        category_id=category_id,
-        year=year,
-        month=month,
-        amount=body.amount,
-    )
+    try:
+        override = budget_service.set_monthly_override(
+            db,
+            category_id=category_id,
+            year=year,
+            month=month,
+            amount=body.amount,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if override is None:
         raise HTTPException(status_code=404, detail="Budget not found for this category/year")
     return MonthlyOverrideResponse(month=override.month, amount=override.amount)
@@ -120,12 +123,15 @@ def delete_monthly_override(
     month: int,
     db: Session = Depends(get_db),
 ):
-    deleted = budget_service.delete_monthly_override(
-        db,
-        category_id=category_id,
-        year=year,
-        month=month,
-    )
+    try:
+        deleted = budget_service.delete_monthly_override(
+            db,
+            category_id=category_id,
+            year=year,
+            month=month,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(status_code=404, detail="Override not found")
 

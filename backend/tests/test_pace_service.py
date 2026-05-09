@@ -25,7 +25,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy.orm import Session
 
-from app.models import Budget, Category, Subscription, Transaction
+from app.models import Budget, BudgetMonthlyOverride, Category, Subscription, Transaction
 from app.models.category import CspBucket
 from app.services import budget_service, pace_service
 
@@ -72,6 +72,24 @@ def _set_budget(db: Session, *, category_id: int, year: int, monthly: float) -> 
     db.commit()
     db.refresh(b)
     return b
+
+
+def _set_override(
+    db: Session, *, category_id: int, year: int, month: int, amount: float
+) -> BudgetMonthlyOverride:
+    """Insert a BudgetMonthlyOverride directly, bypassing the service guard.
+
+    The service ``set_monthly_override`` rejects past-month writes; pace tests
+    seed historical overrides for downstream-math assertions and go through
+    this helper instead.
+    """
+    budget = db.query(Budget).filter(Budget.category_id == category_id, Budget.year == year).first()
+    assert budget is not None
+    override = BudgetMonthlyOverride(budget_id=budget.id, month=month, amount=amount)
+    db.add(override)
+    db.commit()
+    db.refresh(override)
+    return override
 
 
 def _make_txn(
@@ -427,7 +445,7 @@ def test_end_of_month_override_for_february(db: Session):
     cats = _seed_csp_categories(db)
     bills = cats["Bills & Utilities"]
     _set_budget(db, category_id=bills.id, year=2026, monthly=200.0)
-    budget_service.set_monthly_override(db, category_id=bills.id, year=2026, month=2, amount=400.0)
+    _set_override(db, category_id=bills.id, year=2026, month=2, amount=400.0)
     result = _pace(db, date(2026, 2, 1), date(2026, 2, 28), today=date(2026, 2, 28))
     by_id = {c.category_id: c for c in result.categories}
     row = by_id[bills.id]
@@ -566,7 +584,7 @@ def test_avb_override_in_middle_month_only(db: Session):
     cats = _seed_csp_categories(db)
     bills = cats["Bills & Utilities"]
     _set_budget(db, category_id=bills.id, year=2026, monthly=300.0)
-    budget_service.set_monthly_override(db, category_id=bills.id, year=2026, month=3, amount=500.0)
+    _set_override(db, category_id=bills.id, year=2026, month=3, amount=500.0)
     # Range Feb 1 → Apr 30; override only applies to March.
     result = _pace(db, date(2026, 2, 1), date(2026, 4, 30))
     by_id = {c.category_id: c for c in result.categories}
