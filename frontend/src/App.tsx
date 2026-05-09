@@ -1,11 +1,11 @@
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { Layout } from "@/components/Layout";
 import Overview from "@/pages/Overview";
 import Transactions from "@/pages/Transactions";
 import Subscriptions from "@/pages/Subscriptions";
-import Budget from "@/pages/Budget";
+import Budget, { ActualTab, HistoricalTab, SetTab } from "@/pages/Budget";
 import Forecast from "@/pages/Forecast";
 import Payments from "@/pages/Payments";
 import CoastFire from "@/pages/CoastFire";
@@ -30,7 +30,12 @@ export default function App() {
             <Route path="/" element={<Overview />} />
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/subscriptions" element={<Subscriptions />} />
-            <Route path="/budget" element={<Budget />} />
+            <Route path="/budget" element={<Budget />}>
+              <Route index element={<Navigate to="actual" replace />} />
+              <Route path="historical" element={<HistoricalTab />} />
+              <Route path="set" element={<SetTab />} />
+              <Route path="actual" element={<ActualTab />} />
+            </Route>
             <Route path="/forecast" element={<Forecast />} />
             <Route path="/payments" element={<Payments />} />
             <Route path="/coast-fire" element={<CoastFire />} />
