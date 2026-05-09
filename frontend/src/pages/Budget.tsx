@@ -121,6 +121,28 @@ export default function Budget() {
     onSuccess: invalidateBudget,
   });
 
+  // Year-aware baseline mutation used by Historical for past-year edits.
+  // Past-year edits also need the affected year's ["budget", { year: <past> }]
+  // cache invalidated so the editor reloads cleanly if reopened.
+  const setBaselineForYearMutation = useMutation({
+    mutationFn: (vars: {
+      categoryId: number;
+      year: number;
+      monthlyAmount: number;
+      rolloverMode: boolean;
+    }) =>
+      setBudget(vars.categoryId, vars.year, {
+        monthlyAmount: vars.monthlyAmount,
+        rolloverMode: vars.rolloverMode,
+      }),
+    onSuccess: () => {
+      // Refetch every budget query (any year) plus historical analytics.
+      queryClient.invalidateQueries({ queryKey: ["budget"] });
+      queryClient.invalidateQueries({ queryKey: ["csp", "planning", currentMonthKey] });
+      queryClient.invalidateQueries({ queryKey: ["csp", "actuals", actualSelectedMonth] });
+    },
+  });
+
   const setOverrideMutation = useMutation({
     mutationFn: (vars: { categoryId: number; year: number; month: number; amount: number }) =>
       setMonthlyOverride(vars.categoryId, vars.year, vars.month, vars.amount),
@@ -208,6 +230,13 @@ export default function Budget() {
     hasBudgets,
     setBaseline: (categoryId, monthlyAmount, rolloverMode) =>
       setBaselineMutation.mutate({ categoryId, monthlyAmount, rolloverMode }),
+    setBaselineForYear: (categoryId, y, monthlyAmount, rolloverMode) =>
+      setBaselineForYearMutation.mutate({
+        categoryId,
+        year: y,
+        monthlyAmount,
+        rolloverMode,
+      }),
     setOverride: (categoryId, y, month, amount) =>
       setOverrideMutation.mutate({ categoryId, year: y, month, amount }),
     clearOverride: (categoryId, y, month) =>
@@ -272,6 +301,13 @@ interface BudgetOutletContext {
   setActualSelectedMonth: (m: string) => void;
   hasBudgets: boolean;
   setBaseline: (categoryId: number, monthlyAmount: number, rolloverMode: boolean) => void;
+  /** Year-aware baseline write for past-year edits invoked from HistoricalView. */
+  setBaselineForYear: (
+    categoryId: number,
+    year: number,
+    monthlyAmount: number,
+    rolloverMode: boolean,
+  ) => void;
   setOverride: (categoryId: number, year: number, month: number, amount: number) => void;
   clearOverride: (categoryId: number, year: number, month: number) => void;
   suggest: () => void;
@@ -284,11 +320,11 @@ function useBudgetContext(): BudgetOutletContext {
 }
 
 export function HistoricalTab() {
-  const { stats } = useBudgetContext();
+  const { stats, setBaselineForYear } = useBudgetContext();
   return (
     <div className="space-y-6">
       {stats.length > 0 ? (
-        <HistoricalView stats={stats} />
+        <HistoricalView stats={stats} onSaveBaseline={setBaselineForYear} />
       ) : (
         <p className="text-sm text-muted-foreground">
           No historical spending yet. Import some transactions to see stats.

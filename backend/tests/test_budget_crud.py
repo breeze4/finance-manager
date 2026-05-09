@@ -39,6 +39,29 @@ def _seed_categories(db: Session) -> dict[str, int]:
     return {cat.name: cat.id for cat in db.query(Category).all()}
 
 
+def _insert_override(
+    db: Session,
+    *,
+    category_id: int,
+    year: int,
+    month: int,
+    amount: float,
+) -> BudgetMonthlyOverride:
+    """Insert a BudgetMonthlyOverride directly, bypassing the service guard.
+
+    The service ``set_monthly_override`` rejects past-month writes; tests that
+    need to seed historical overrides for downstream-math assertions go
+    through this helper instead.
+    """
+    budget = db.query(Budget).filter(Budget.category_id == category_id, Budget.year == year).first()
+    assert budget is not None, "create the parent budget before inserting an override"
+    override = BudgetMonthlyOverride(budget_id=budget.id, month=month, amount=amount)
+    db.add(override)
+    db.commit()
+    db.refresh(override)
+    return override
+
+
 def _make_txn(
     db: Session,
     *,
@@ -177,6 +200,129 @@ class TestBudgetCRUD:
         assert result is False
 
 
+class TestPastPeriodGuards:
+    """Past-year baseline edits succeed; past-month override edits are rejected.
+
+    Anchors on ``date.today()`` rather than a frozen date — the guard reads
+    the wall clock. Tests use year offsets relative to today's year so the
+    asserts stay correct as the calendar moves.
+    """
+
+    def test_past_year_baseline_set_succeeds(self, db: Session):
+        cats = _seed_categories(db)
+        gid = cats["Groceries"]
+        past_year = date.today().year - 1
+
+        budget = set_budget(db, category_id=gid, year=past_year, monthly_amount=420.0)
+        assert budget.year == past_year
+        assert budget.monthly_amount == 420.0
+
+    def test_past_year_baseline_update_persists(self, db: Session):
+        cats = _seed_categories(db)
+        gid = cats["Groceries"]
+        past_year = date.today().year - 1
+
+        set_budget(db, category_id=gid, year=past_year, monthly_amount=420.0)
+        set_budget(db, category_id=gid, year=past_year, monthly_amount=555.0)
+        budget = (
+            db.query(Budget).filter(Budget.category_id == gid, Budget.year == past_year).first()
+        )
+        assert budget is not None
+        assert budget.monthly_amount == 555.0
+
+    def test_past_month_override_rejected(self, db: Session):
+        cats = _seed_categories(db)
+        gid = cats["Groceries"]
+        past_year = date.today().year - 1
+
+        set_budget(db, category_id=gid, year=past_year, monthly_amount=500.0)
+        with pytest.raises(ValueError, match="past month"):
+            set_monthly_override(db, category_id=gid, year=past_year, month=6, amount=800.0)
+
+    def test_past_month_override_delete_rejected(self, db: Session):
+        cats = _seed_categories(db)
+        gid = cats["Groceries"]
+        past_year = date.today().year - 1
+
+        set_budget(db, category_id=gid, year=past_year, monthly_amount=500.0)
+        with pytest.raises(ValueError, match="past month"):
+            delete_monthly_override(db, category_id=gid, year=past_year, month=6)
+
+
+class TestPastPeriodGuardsHTTP:
+    """The router translates the service's ValueError into HTTP 400."""
+
+    def test_past_year_baseline_put_returns_200(self, db: Session, client: TestClient):
+        cats = _seed_categories(db)
+        gid = cats["Groceries"]
+        past_year = date.today().year - 1
+
+        resp = client.put(
+            f"/api/budget/{gid}/{past_year}",
+            json={"monthly_amount": 420.0, "rollover_mode": False},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["year"] == past_year
+        assert body["monthly_amount"] == 420.0
+
+        # Persistence check.
+        budget = (
+            db.query(Budget).filter(Budget.category_id == gid, Budget.year == past_year).first()
+        )
+        assert budget is not None
+        assert budget.monthly_amount == 420.0
+
+    def test_past_month_override_put_returns_400(self, db: Session, client: TestClient):
+        cats = _seed_categories(db)
+        gid = cats["Groceries"]
+        past_year = date.today().year - 1
+
+        set_budget(db, category_id=gid, year=past_year, monthly_amount=500.0)
+        resp = client.put(
+            f"/api/budget/{gid}/{past_year}/6",
+            json={"amount": 800.0},
+        )
+        assert resp.status_code == 400
+        assert "past month" in resp.json()["detail"]
+
+    def test_current_month_override_put_returns_200(self, db: Session, client: TestClient):
+        cats = _seed_categories(db)
+        gid = cats["Groceries"]
+        today = date.today()
+
+        set_budget(db, category_id=gid, year=today.year, monthly_amount=500.0)
+        resp = client.put(
+            f"/api/budget/{gid}/{today.year}/{today.month}",
+            json={"amount": 700.0},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["amount"] == 700.0
+
+    def test_future_month_override_put_returns_200(self, db: Session, client: TestClient):
+        cats = _seed_categories(db)
+        gid = cats["Groceries"]
+        future_year = date.today().year + 1
+
+        set_budget(db, category_id=gid, year=future_year, monthly_amount=500.0)
+        resp = client.put(
+            f"/api/budget/{gid}/{future_year}/3",
+            json={"amount": 700.0},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["amount"] == 700.0
+
+    def test_past_month_override_delete_returns_400(self, db: Session, client: TestClient):
+        cats = _seed_categories(db)
+        gid = cats["Groceries"]
+        past_year = date.today().year - 1
+
+        set_budget(db, category_id=gid, year=past_year, monthly_amount=500.0)
+        resp = client.delete(f"/api/budget/{gid}/{past_year}/6")
+        assert resp.status_code == 400
+        assert "past month" in resp.json()["detail"]
+
+
 class TestActualVsBudget:
     def test_basic_actual_vs_budget(self, db: Session):
         cats = _seed_categories(db)
@@ -220,7 +366,9 @@ class TestActualVsBudget:
         gid = cats["Groceries"]
 
         set_budget(db, category_id=gid, year=2026, monthly_amount=500.0)
-        set_monthly_override(db, category_id=gid, year=2026, month=1, amount=600.0)
+        # Past-month overrides are guarded by the service; insert directly to
+        # exercise downstream actual-vs-budget math for a historical month.
+        _insert_override(db, category_id=gid, year=2026, month=1, amount=600.0)
 
         _make_txn(
             db,
@@ -242,7 +390,7 @@ class TestActualVsBudget:
         gid = cats["Groceries"]
 
         set_budget(db, category_id=gid, year=2026, monthly_amount=500.0)
-        set_monthly_override(db, category_id=gid, year=2026, month=1, amount=600.0)
+        _insert_override(db, category_id=gid, year=2026, month=1, amount=600.0)
 
         result = get_actual_vs_budget(db, year=2026)
 
