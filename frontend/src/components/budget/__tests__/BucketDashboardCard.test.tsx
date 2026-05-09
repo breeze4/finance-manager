@@ -93,6 +93,6 @@ describe("BucketDashboardCard", () => {
       />,
     );
     expect(screen.getByText("52.7%")).toBeInTheDocument();
-    expect(screen.getByText("$2,635.00")).toBeInTheDocument();
+    expect(screen.getByText("$2,635")).toBeInTheDocument();
   });
 });
