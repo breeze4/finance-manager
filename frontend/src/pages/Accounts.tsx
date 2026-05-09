@@ -41,6 +41,8 @@ import {
   type AccountType,
   type AccountUpdate
 } from "@/api/accounts";
+import { getLatestBalances, type LatestBalance } from "@/api/snapshots";
+import { formatCurrency, formatDate } from "@/lib/format";
 
 const TYPE_LABELS: Record<AccountType, string> = {
   checking: "Checking",
@@ -69,6 +71,13 @@ export default function Accounts() {
     queryKey: ACCOUNTS_KEY(showArchived),
     queryFn: () => listAccounts(showArchived)
   });
+  const latestQ = useQuery<LatestBalance[]>({
+    queryKey: ["net-worth", "latest"],
+    queryFn: getLatestBalances,
+  });
+  const statsByAccount = new Map<number, LatestBalance>(
+    (latestQ.data ?? []).map((b) => [b.account_id, b]),
+  );
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["accounts"] });
@@ -172,17 +181,41 @@ export default function Accounts() {
                 <TableHead>Name</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Institution</TableHead>
+                <TableHead className="text-right">Latest balance</TableHead>
+                <TableHead>As of</TableHead>
+                <TableHead className="text-right">Snapshots</TableHead>
+                <TableHead className="text-right">Transactions</TableHead>
+                <TableHead>Activity</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {accounts.map(a => (
+              {accounts.map(a => {
+                const stats = statsByAccount.get(a.id);
+                return (
                 <TableRow key={a.id}>
                   <TableCell className="font-medium">{a.name}</TableCell>
                   <TableCell>{TYPE_LABELS[a.type]}</TableCell>
                   <TableCell className="text-muted-foreground">
                     {a.institution ?? "—"}
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-xs">
+                    {stats?.balance != null ? formatCurrency(stats.balance) : "—"}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {stats?.as_of_date ? formatDate(stats.as_of_date) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right text-xs text-muted-foreground">
+                    {stats?.snapshot_count ?? 0}
+                  </TableCell>
+                  <TableCell className="text-right text-xs text-muted-foreground">
+                    {stats?.transaction_count ?? 0}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {stats?.first_transaction_date && stats?.last_transaction_date
+                      ? `${formatDate(stats.first_transaction_date)} → ${formatDate(stats.last_transaction_date)}`
+                      : "—"}
                   </TableCell>
                   <TableCell>
                     {a.is_archived ? (
@@ -218,7 +251,8 @@ export default function Accounts() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         )}

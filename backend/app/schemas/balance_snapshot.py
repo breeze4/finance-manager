@@ -24,6 +24,10 @@ class LatestBalanceResponse(BaseModel):
     account_type: str
     balance: float | None
     as_of_date: date | None
+    snapshot_count: int = 0
+    transaction_count: int = 0
+    first_transaction_date: date | None = None
+    last_transaction_date: date | None = None
 
     model_config = {"from_attributes": True}
 

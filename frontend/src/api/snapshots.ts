@@ -28,6 +28,10 @@ export interface LatestBalance {
   account_type: AccountType;
   balance: number | null;
   as_of_date: string | null;
+  snapshot_count: number;
+  transaction_count: number;
+  first_transaction_date: string | null;
+  last_transaction_date: string | null;
 }
 
 export function postSnapshotBatch(

@@ -17,7 +17,7 @@ from sqlalchemy import func
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session, aliased
 
-from app.models import Account, BalanceSnapshot
+from app.models import Account, BalanceSnapshot, Transaction
 from app.schemas.balance_snapshot import LatestBalanceResponse, SnapshotBatchEntry
 
 
@@ -88,8 +88,19 @@ def get_latest_balances(db: Session) -> list[LatestBalanceResponse]:
         db.query(
             BalanceSnapshot.account_id.label("account_id"),
             func.max(BalanceSnapshot.as_of_date).label("max_date"),
+            func.count(BalanceSnapshot.id).label("snapshot_count"),
         )
         .group_by(BalanceSnapshot.account_id)
+        .subquery()
+    )
+    txn_stats = (
+        db.query(
+            Transaction.account_id.label("account_id"),
+            func.count(Transaction.id).label("txn_count"),
+            func.min(Transaction.date).label("first_date"),
+            func.max(Transaction.date).label("last_date"),
+        )
+        .group_by(Transaction.account_id)
         .subquery()
     )
     snap = aliased(BalanceSnapshot)
@@ -101,12 +112,17 @@ def get_latest_balances(db: Session) -> list[LatestBalanceResponse]:
             Account.type,
             snap.balance,
             snap.as_of_date,
+            func.coalesce(latest_dates.c.snapshot_count, 0),
+            func.coalesce(txn_stats.c.txn_count, 0),
+            txn_stats.c.first_date,
+            txn_stats.c.last_date,
         )
         .outerjoin(latest_dates, latest_dates.c.account_id == Account.id)
         .outerjoin(
             snap,
             (snap.account_id == Account.id) & (snap.as_of_date == latest_dates.c.max_date),
         )
+        .outerjoin(txn_stats, txn_stats.c.account_id == Account.id)
         .filter(Account.is_archived.is_(False))
         .order_by(Account.name)
         .all()
@@ -119,6 +135,20 @@ def get_latest_balances(db: Session) -> list[LatestBalanceResponse]:
             account_type=type_,
             balance=balance,
             as_of_date=as_of,
+            snapshot_count=snap_count,
+            transaction_count=txn_count,
+            first_transaction_date=first_date,
+            last_transaction_date=last_date,
         )
-        for acct_id, name, type_, balance, as_of in rows
+        for (
+            acct_id,
+            name,
+            type_,
+            balance,
+            as_of,
+            snap_count,
+            txn_count,
+            first_date,
+            last_date,
+        ) in rows
     ]
