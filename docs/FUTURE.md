@@ -49,6 +49,8 @@ Spending by category would be nice with a legend always shown on it, maybe show 
 
 Might want to be able to tweak historical budgets - some mistakes got made and now they're showing up weird, I want to be able to fix those to get accurate data and fix the app's algorithms
 
+Budget page should have routes for historical, set-budget, actual-vs-expected so that a page refresh doesn't lose your place
+
 ## Currency display
 
 Generally stick with no cents shown for dollar amounts, precision should be to 0, not decimals

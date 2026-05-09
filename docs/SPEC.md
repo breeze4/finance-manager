@@ -231,6 +231,8 @@ The flex view shows remaining flexible spending for the month after fixed expens
 
 Collapsible sidebar with icon-only collapsed state. Sidebar items have tooltips when collapsed.
 
+Any page-level sub-navigation (tabs, segmented controls, sub-view switchers) is reflected in the URL as a child route. Refreshing the browser preserves the active sub-view; the active tab is never component-only state.
+
 Pages:
 1. **Overview** — Dashboard with summary cards and key charts
 2. **Net Worth** — Net worth over time (line chart) and latest-balance table per account
