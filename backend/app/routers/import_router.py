@@ -23,8 +23,6 @@ def import_single(filename: str, db: Session = Depends(get_db)):
         "filename": outcome.filename,
         "rows_imported": outcome.rows_imported,
         "rows_skipped": outcome.rows_skipped,
-        "matches_found": report.matches_found,
-        "total_matches": report.total_matches,
     }
 
 
@@ -46,6 +44,4 @@ def import_all_files(db: Session = Depends(get_db)):
         ],
         "total_imported": report.rows_imported,
         "total_skipped": report.rows_skipped,
-        "matches_found": report.matches_found,
-        "total_matches": report.total_matches,
     }

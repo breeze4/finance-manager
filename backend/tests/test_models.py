@@ -12,7 +12,6 @@ from app.models import (
     Category,
     ClassificationRule,
     ImportLog,
-    PaymentMatch,
     Subscription,
     Transaction,
 )
@@ -158,24 +157,6 @@ class TestClassificationRuleModel:
         assert rule.category.name == "Groceries"
 
 
-class TestPaymentMatchModel:
-    def test_create_match(self, db: Session):
-        becu = _make_account(db, name="BECU", type="checking")
-        chase = _make_account(db, name="Chase CC", type="credit_card")
-        base = dict(source_file="f.csv", date=date(2025, 1, 1), raw_description="r", vendor="v")
-        t1 = Transaction(**base, account_id=becu.id, amount=-500.0, import_hash="h1")
-        t2 = Transaction(**base, account_id=chase.id, amount=500.0, import_hash="h2")
-        db.add_all([t1, t2])
-        db.commit()
-
-        match = PaymentMatch(checking_transaction_id=t1.id, cc_transaction_id=t2.id)
-        db.add(match)
-        db.commit()
-
-        assert match.checking_transaction is t1
-        assert match.cc_transaction is t2
-
-
 class TestBudgetModel:
     def test_budget_with_overrides(self, db: Session):
         cat = Category(name="Groceries", is_system=True)
@@ -271,7 +252,6 @@ class TestMigrationAppliesCleanly:
             "categories",
             "transactions",
             "classification_rules",
-            "payment_matches",
             "budgets",
             "budget_monthly_overrides",
             "subscriptions",

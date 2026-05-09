@@ -1,19 +1,19 @@
-from datetime import datetime
+from datetime import date
 
 from pydantic import BaseModel
 
-from app.schemas.transaction import TransactionResponse
 
+class PaymentListItem(BaseModel):
+    """One row in the ``GET /api/payments`` response.
 
-class PaymentMatchResponse(BaseModel):
+    Represents a positive-amount transaction on a credit-card account.
+    Field names match the wire (snake_case); ``amount`` is always
+    positive (filtered server-side).
+    """
+
     id: int
-    checking_transaction: TransactionResponse
-    cc_transaction: TransactionResponse
-    matched_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class DetectionResultResponse(BaseModel):
-    matches_found: int
-    total_matches: int
+    date: date
+    account_id: int
+    account_name: str
+    vendor: str
+    amount: float

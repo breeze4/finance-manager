@@ -1,60 +1,43 @@
-from fastapi import APIRouter, Depends, HTTPException
+"""HTTP layer for ``/api/payments``.
+
+Returns a list of every positive-amount transaction on a credit-card
+account, optionally narrowed by ``account_id`` and date bounds. See
+``docs/specs/2026-05-08-04-payments-redesign.md`` for the design.
+"""
+
+from datetime import date
+
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.schemas.payment import DetectionResultResponse, PaymentMatchResponse
-from app.schemas.transaction import TransactionResponse
-from app.services import payment_service, transaction_service
+from app.schemas.payment import PaymentListItem
+from app.services import payment_service
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
 
-def _txn_to_response(txn) -> TransactionResponse:
-    return TransactionResponse(
-        id=txn.id,
-        source_file=txn.source_file,
-        account_id=txn.account_id,
-        account_name=txn.account.name if txn.account is not None else "",
-        date=txn.date,
-        post_date=txn.post_date,
-        raw_description=txn.raw_description,
-        vendor=txn.vendor,
-        amount=txn.amount,
-        source_category=txn.source_category,
-        category_id=txn.category_id,
-        category_name=transaction_service.get_category_name(txn),
-        type=txn.type,
-        is_verified=txn.is_verified,
-        is_transfer=txn.is_transfer,
-        memo=txn.memo,
-        created_at=txn.created_at,
-        updated_at=txn.updated_at,
+@router.get("", response_model=list[PaymentListItem])
+def list_payments(
+    account_id: int | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    db: Session = Depends(get_db),
+) -> list[PaymentListItem]:
+    txns = payment_service.list_cc_payments(
+        db,
+        account_id=account_id,
+        start_date=start_date,
+        end_date=end_date,
     )
-
-
-def _match_to_response(match) -> PaymentMatchResponse:
-    return PaymentMatchResponse(
-        id=match.id,
-        checking_transaction=_txn_to_response(match.checking_transaction),
-        cc_transaction=_txn_to_response(match.cc_transaction),
-        matched_at=match.matched_at,
-    )
-
-
-@router.get("", response_model=list[PaymentMatchResponse])
-def list_matches(db: Session = Depends(get_db)):
-    matches = payment_service.list_matches(db)
-    return [_match_to_response(m) for m in matches]
-
-
-@router.post("/detect", response_model=DetectionResultResponse)
-def detect_payments(db: Session = Depends(get_db)):
-    result = payment_service.detect_payments(db)
-    return result
-
-
-@router.delete("/{match_id}", status_code=204)
-def unmatch(match_id: int, db: Session = Depends(get_db)):
-    result = payment_service.unmatch(db, match_id)
-    if result is None:
-        raise HTTPException(status_code=404, detail="Match not found")
+    return [
+        PaymentListItem(
+            id=t.id,
+            date=t.date,
+            account_id=t.account_id,
+            account_name=t.account.name if t.account is not None else "",
+            vendor=t.vendor,
+            amount=t.amount,
+        )
+        for t in txns
+    ]

@@ -1,103 +1,47 @@
-from dataclasses import dataclass
+"""Payments service.
+
+The credit-card account is the source of truth for payment activity:
+every positive-amount transaction on an account of type ``credit_card``
+is treated as money flowing back into the card (payment, refund, credit).
+Users classify checking-side debits manually via the existing
+transactions UI; no auto-matching runs at import time.
+"""
+
+from __future__ import annotations
+
+from datetime import date
 
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import PaymentMatch, Transaction
+from app.models import Account, Transaction
 
 
-@dataclass
-class DetectionResult:
-    matches_found: int
-    total_matches: int
+def list_cc_payments(
+    db: Session,
+    *,
+    account_id: int | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> list[Transaction]:
+    """List positive-amount transactions on credit-card accounts.
 
-
-def detect_payments(db: Session) -> DetectionResult:
-    """Detect credit card payments by matching BECU checking debits to Chase CC credits.
-
-    BECU candidates: raw_description LIKE '%CHASE CREDIT CRD%' AND is_transfer = false
-    Chase candidates: type = 'Payment' AND is_transfer = false
-
-    Match criteria: amounts equal in magnitude, dates within 5 days.
-    Idempotent: only considers is_transfer = false transactions.
+    Joined to ``accounts`` and filtered to ``accounts.type = 'credit_card'``
+    AND ``transactions.amount > 0``. Optional ``account_id`` narrows to a
+    single CC; absent means "All CCs". Optional ``start_date`` / ``end_date``
+    are inclusive bounds on ``transactions.date``. Sorted by ``date DESC,
+    id DESC``.
     """
-    becu_candidates = (
+    query = (
         db.query(Transaction)
-        .filter(
-            Transaction.raw_description.ilike("%CHASE CREDIT CRD%"),
-            Transaction.is_transfer == False,  # noqa: E712
-        )
-        .all()
+        .join(Account, Transaction.account_id == Account.id)
+        .options(joinedload(Transaction.account))
+        .filter(Account.type == "credit_card")
+        .filter(Transaction.amount > 0)
     )
-
-    chase_candidates = (
-        db.query(Transaction)
-        .filter(
-            Transaction.type == "Payment",
-            Transaction.is_transfer == False,  # noqa: E712
-        )
-        .all()
-    )
-
-    matched_chase_ids: set[int] = set()
-    matches_found = 0
-
-    for becu_txn in becu_candidates:
-        for chase_txn in chase_candidates:
-            if chase_txn.id in matched_chase_ids:
-                continue
-
-            amounts_match = round(abs(becu_txn.amount), 2) == round(abs(chase_txn.amount), 2)
-            dates_close = abs((becu_txn.date - chase_txn.date).days) <= 5
-
-            if amounts_match and dates_close:
-                becu_txn.is_transfer = True
-                chase_txn.is_transfer = True
-
-                match = PaymentMatch(
-                    checking_transaction_id=becu_txn.id,
-                    cc_transaction_id=chase_txn.id,
-                )
-                db.add(match)
-
-                matched_chase_ids.add(chase_txn.id)
-                matches_found += 1
-                break
-
-    db.commit()
-
-    total_matches = db.query(PaymentMatch).count()
-    return DetectionResult(matches_found=matches_found, total_matches=total_matches)
-
-
-def list_matches(db: Session) -> list[PaymentMatch]:
-    """List all payment matches with eagerly loaded transactions."""
-    return (
-        db.query(PaymentMatch)
-        .options(
-            joinedload(PaymentMatch.checking_transaction),
-            joinedload(PaymentMatch.cc_transaction),
-        )
-        .order_by(PaymentMatch.matched_at.desc())
-        .all()
-    )
-
-
-def unmatch(db: Session, match_id: int) -> PaymentMatch | None:
-    """Remove a payment match and reset is_transfer on both transactions."""
-    match = (
-        db.query(PaymentMatch)
-        .options(
-            joinedload(PaymentMatch.checking_transaction),
-            joinedload(PaymentMatch.cc_transaction),
-        )
-        .filter(PaymentMatch.id == match_id)
-        .first()
-    )
-    if match is None:
-        return None
-
-    match.checking_transaction.is_transfer = False
-    match.cc_transaction.is_transfer = False
-    db.delete(match)
-    db.commit()
-    return match
+    if account_id is not None:
+        query = query.filter(Transaction.account_id == account_id)
+    if start_date is not None:
+        query = query.filter(Transaction.date >= start_date)
+    if end_date is not None:
+        query = query.filter(Transaction.date <= end_date)
+    return query.order_by(Transaction.date.desc(), Transaction.id.desc()).all()

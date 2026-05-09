@@ -16,8 +16,9 @@ the matched parser, dedups parsed rows against existing
 (…)`` query, auto-creates accounts via the parser's ``account_default()``,
 resolves categories through classification rules then the parser's
 ``map_source_category``, persists rows, writes an ``ImportLog`` entry, and
-commits per file. After all files are processed, payment detection runs
-once via ``payment_service.detect_payments``.
+commits per file. Checking-side credit-card payments are no longer
+auto-matched — users classify them manually via the existing transactions
+UI (see ``docs/specs/2026-05-08-04-payments-redesign.md``).
 """
 
 from __future__ import annotations
@@ -38,7 +39,6 @@ from app.services.classification_service import (
     auto_create_rule,
     find_matching_rule,
 )
-from app.services.payment_service import detect_payments
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +56,6 @@ class IngestReport:
     files: list[FileOutcome]
     rows_imported: int
     rows_skipped: int
-    matches_found: int
-    total_matches: int
 
 
 class TransactionIngestion(Protocol):
@@ -153,14 +151,10 @@ class IngestionService:
         else:
             outcomes = [self._import_one_file(source)]
 
-        detection = detect_payments(self._db)
-
         return IngestReport(
             files=outcomes,
             rows_imported=sum(o.rows_imported for o in outcomes),
             rows_skipped=sum(o.rows_skipped for o in outcomes),
-            matches_found=detection.matches_found,
-            total_matches=detection.total_matches,
         )
 
     def reclassify_vendor(

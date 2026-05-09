@@ -1,61 +1,36 @@
 /**
- * Typed fetch client for the /api/payments endpoints.
+ * Typed fetch client for ``/api/payments``.
  *
- * Backend contract: `backend/app/routers/payment_router.py`. A
- * `PaymentMatchResponse` pairs a BECU checking debit (with raw description
- * containing "CHASE CREDIT CRD") to a Chase credit-card payment row. Field
- * names mirror the Pydantic schemas (snake_case) so the API boundary matches
- * the wire.
- *
- * The embedded transaction sub-shape is declared locally here as
- * `EmbeddedTransaction` rather than imported from `./transactions` — Step 6
- * (the Transactions page port) owns the canonical `Transaction` shape and
- * its camelCase adapter, and we don't want this page to depend on a
- * not-yet-finalised type. Snake_case stays at the API boundary; the
- * Payments page reads these fields directly without normalisation.
+ * Backend contract: ``backend/app/routers/payment_router.py``. Returns
+ * positive-amount transactions on credit-card accounts, optionally
+ * filtered by ``account_id`` / ``start_date`` / ``end_date``. Field names
+ * mirror the wire (snake_case) since this list is rendered without
+ * normalisation.
  */
 import { API_BASE, request } from "./_client";
 
 const BASE = `${API_BASE}/payments`;
 
-export interface EmbeddedTransaction {
+export interface PaymentListItem {
   id: number;
+  date: string;
   account_id: number;
   account_name: string;
-  date: string;
-  raw_description: string;
   vendor: string;
   amount: number;
-  category_id: number | null;
-  category_name: string | null;
-  type: string | null;
-  is_transfer: boolean;
 }
 
-export interface PaymentMatchResponse {
-  id: number;
-  checking_transaction: EmbeddedTransaction;
-  cc_transaction: EmbeddedTransaction;
-  matched_at: string;
+export interface ListPaymentsParams {
+  accountId?: number | null;
+  startDate?: string | null;
+  endDate?: string | null;
 }
 
-export interface PaymentDetectionResult {
-  matches_found: number;
-  total_matches: number;
-}
-
-export function listPayments(): Promise<PaymentMatchResponse[]> {
-  return request<PaymentMatchResponse[]>(BASE);
-}
-
-export function detectPayments(): Promise<PaymentDetectionResult> {
-  return request<PaymentDetectionResult>(`${BASE}/detect`, {
-    method: "POST",
-  });
-}
-
-export function unmatchPayment(matchId: number): Promise<void> {
-  return request<void>(`${BASE}/${matchId}`, {
-    method: "DELETE",
-  });
+export function listPayments(params: ListPaymentsParams = {}): Promise<PaymentListItem[]> {
+  const qs = new URLSearchParams();
+  if (params.accountId != null) qs.append("account_id", String(params.accountId));
+  if (params.startDate) qs.append("start_date", params.startDate);
+  if (params.endDate) qs.append("end_date", params.endDate);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request<PaymentListItem[]>(`${BASE}${suffix}`);
 }

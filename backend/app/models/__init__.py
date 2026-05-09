@@ -7,7 +7,6 @@ from app.models.coast_fire_scenario import CoastFireScenario
 from app.models.import_log import ImportLog
 from app.models.mortgage_scenario import MortgageScenario
 from app.models.net_income import NetIncomePeriod
-from app.models.payment_match import PaymentMatch
 from app.models.subscription import Subscription
 from app.models.transaction import Transaction
 
@@ -22,7 +21,6 @@ __all__ = [
     "ImportLog",
     "MortgageScenario",
     "NetIncomePeriod",
-    "PaymentMatch",
     "Subscription",
     "Transaction",
 ]
