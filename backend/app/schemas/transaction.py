@@ -38,9 +38,14 @@ class TransactionUpdate(BaseModel):
     is_verified: bool | None = None
     vendor: str | None = None
     memo: str | None = None
+    # When True with category_id set, also reclassifies all other unverified
+    # transactions matching the same vendor and creates/updates the rule.
+    # Default False — single-row updates change only the target row.
+    apply_to_vendor: bool = False
 
 
 class BulkUpdateRequest(BaseModel):
     ids: list[int]
     category_id: int | None = None
     is_verified: bool | None = None
+    apply_to_vendor: bool = False

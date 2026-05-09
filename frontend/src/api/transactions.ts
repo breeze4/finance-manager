@@ -72,16 +72,34 @@ export interface TransactionUpdatePayload {
   isVerified?: boolean;
   vendor?: string;
   memo?: string;
+  /**
+   * When true and ``categoryId`` is set, also reclassifies all other
+   * unverified transactions matching the same vendor and creates/updates
+   * a classification rule. Default false — change only the target row.
+   */
+  applyToVendor?: boolean;
+}
+
+export interface UpdateTransactionResult {
+  transaction: Transaction;
+  /** Count of OTHER unverified transactions matching the vendor that were
+   * NOT touched (because ``applyToVendor`` was false). The UI uses this to
+   * surface a hint offering to bulk-apply. Zero when ``applyToVendor`` was
+   * true or when no siblings exist. */
+  vendorMatchCount: number;
 }
 
 export interface BulkUpdatePayload {
   ids: number[];
   categoryId?: number | null;
   isVerified?: boolean;
+  applyToVendor?: boolean;
 }
 
 export interface BulkUpdateResult {
   updated: number;
+  /** See ``UpdateTransactionResult.vendorMatchCount``. */
+  vendorMatchCount: number;
 }
 
 // ---- private wire types + adapter ----
@@ -170,19 +188,33 @@ export function getTransaction(id: number): Promise<Transaction> {
   return request<TransactionResponseRaw>(`${BASE}/${id}`).then(toTransaction);
 }
 
+interface UpdateTransactionResultRaw {
+  transaction: TransactionResponseRaw;
+  vendor_match_count: number;
+}
+
+interface BulkUpdateResultRaw {
+  updated: number;
+  vendor_match_count: number;
+}
+
 export function updateTransaction(
   id: number,
   payload: TransactionUpdatePayload
-): Promise<Transaction> {
+): Promise<UpdateTransactionResult> {
   const body: Record<string, unknown> = {};
   if (payload.categoryId !== undefined) body.category_id = payload.categoryId;
   if (payload.isVerified !== undefined) body.is_verified = payload.isVerified;
   if (payload.vendor !== undefined) body.vendor = payload.vendor;
   if (payload.memo !== undefined) body.memo = payload.memo;
-  return request<TransactionResponseRaw>(`${BASE}/${id}`, {
+  if (payload.applyToVendor !== undefined) body.apply_to_vendor = payload.applyToVendor;
+  return request<UpdateTransactionResultRaw>(`${BASE}/${id}`, {
     method: "PATCH",
     body: JSON.stringify(body),
-  }).then(toTransaction);
+  }).then((raw) => ({
+    transaction: toTransaction(raw.transaction),
+    vendorMatchCount: raw.vendor_match_count,
+  }));
 }
 
 export function bulkUpdateTransactions(
@@ -191,8 +223,12 @@ export function bulkUpdateTransactions(
   const body: Record<string, unknown> = { ids: payload.ids };
   if (payload.categoryId !== undefined) body.category_id = payload.categoryId;
   if (payload.isVerified !== undefined) body.is_verified = payload.isVerified;
-  return request<BulkUpdateResult>(`${BASE}/bulk-update`, {
+  if (payload.applyToVendor !== undefined) body.apply_to_vendor = payload.applyToVendor;
+  return request<BulkUpdateResultRaw>(`${BASE}/bulk-update`, {
     method: "POST",
     body: JSON.stringify(body),
-  });
+  }).then((raw) => ({
+    updated: raw.updated,
+    vendorMatchCount: raw.vendor_match_count,
+  }));
 }

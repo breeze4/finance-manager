@@ -118,7 +118,10 @@ class TestAutoRuleCreationOnClassify:
         gid = seed_categories["Groceries"]
         txn = _make_txn(db, vendor="Fred Meyer", import_hash="acr1")
 
-        resp = client.patch(f"/api/transactions/{txn.id}", json={"category_id": gid})
+        resp = client.patch(
+            f"/api/transactions/{txn.id}",
+            json={"category_id": gid, "apply_to_vendor": True},
+        )
         assert resp.status_code == 200
 
         # Rule should exist
@@ -139,9 +142,15 @@ class TestAutoRuleCreationOnClassify:
         txn = _make_txn(db, vendor="Fred Meyer", import_hash="acr2")
 
         # First classify as Groceries
-        client.patch(f"/api/transactions/{txn.id}", json={"category_id": gid})
+        client.patch(
+            f"/api/transactions/{txn.id}",
+            json={"category_id": gid, "apply_to_vendor": True},
+        )
         # Re-classify as Dining
-        client.patch(f"/api/transactions/{txn.id}", json={"category_id": did})
+        client.patch(
+            f"/api/transactions/{txn.id}",
+            json={"category_id": did, "apply_to_vendor": True},
+        )
 
         rules = (
             db.query(ClassificationRule)
@@ -251,7 +260,11 @@ class TestBulkClassifyCreatesRules:
 
         resp = client.post(
             "/api/transactions/bulk-update",
-            json={"ids": [t1.id, t2.id, t3.id], "category_id": gid},
+            json={
+                "ids": [t1.id, t2.id, t3.id],
+                "category_id": gid,
+                "apply_to_vendor": True,
+            },
         )
         assert resp.status_code == 200
 

@@ -16,6 +16,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronDown, ChevronRight, Search } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
@@ -201,20 +202,78 @@ export default function Transactions() {
   });
   const unclassifiedCount = unclassifiedQ.data?.total ?? 0;
 
+  // After a category change, the backend returns vendorMatchCount of OTHER
+  // unverified rows that share the vendor. We surface a one-click "apply to
+  // those too" hint instead of doing it silently. Cleared on dismiss or after
+  // the user accepts.
+  const [vendorHint, setVendorHint] = useState<
+    | {
+        kind: "single";
+        id: number;
+        categoryId: number;
+        categoryName: string;
+        vendor: string;
+        count: number;
+      }
+    | {
+        kind: "bulk";
+        ids: number[];
+        categoryId: number;
+        categoryName: string;
+        count: number;
+      }
+    | null
+  >(null);
+
   const updateM = useMutation({
-    mutationFn: ({ id, categoryId }: { id: number; categoryId: number | null }) =>
-      updateTransaction(id, { categoryId }),
-    onSuccess: () => {
+    mutationFn: ({ id, categoryId, applyToVendor }: { id: number; categoryId: number | null; applyToVendor?: boolean }) =>
+      updateTransaction(id, { categoryId, applyToVendor }),
+    onSuccess: (result, variables) => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
+      // Only single-row category-set fires the hint. Clearing (categoryId=null)
+      // and apply_to_vendor explicit-true paths skip it.
+      if (
+        variables.categoryId !== null &&
+        !variables.applyToVendor &&
+        result.vendorMatchCount > 0
+      ) {
+        const cat = categoryList.find((c) => c.id === variables.categoryId);
+        if (cat) {
+          setVendorHint({
+            kind: "single",
+            id: variables.id,
+            categoryId: variables.categoryId,
+            categoryName: cat.name,
+            vendor: result.transaction.vendor,
+            count: result.vendorMatchCount,
+          });
+        }
+      } else {
+        setVendorHint(null);
+      }
     },
   });
 
   const bulkM = useMutation({
-    mutationFn: ({ ids, categoryId }: { ids: number[]; categoryId: number }) =>
-      bulkUpdateTransactions({ ids, categoryId }),
-    onSuccess: () => {
+    mutationFn: ({ ids, categoryId, applyToVendor }: { ids: number[]; categoryId: number; applyToVendor?: boolean }) =>
+      bulkUpdateTransactions({ ids, categoryId, applyToVendor }),
+    onSuccess: (result, variables) => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
       setSelectedRows(new Set());
+      if (!variables.applyToVendor && result.vendorMatchCount > 0) {
+        const cat = categoryList.find((c) => c.id === variables.categoryId);
+        if (cat) {
+          setVendorHint({
+            kind: "bulk",
+            ids: variables.ids,
+            categoryId: variables.categoryId,
+            categoryName: cat.name,
+            count: result.vendorMatchCount,
+          });
+        }
+      } else {
+        setVendorHint(null);
+      }
     },
   });
 
@@ -323,6 +382,59 @@ export default function Transactions() {
           </>
         )}
       </div>
+
+      {vendorHint ? (
+        <div className="rounded-lg border border-border bg-secondary/60 p-3 text-sm flex items-center justify-between gap-3 flex-wrap">
+          <span className="text-muted-foreground">
+            {vendorHint.kind === "single" ? (
+              <>
+                Updated 1 transaction. Also reclassify <strong>{vendorHint.count}</strong> other
+                unverified transaction{vendorHint.count === 1 ? "" : "s"} from{" "}
+                <strong>{vendorHint.vendor}</strong> as{" "}
+                <strong>{vendorHint.categoryName}</strong> and create a rule?
+              </>
+            ) : (
+              <>
+                Updated {vendorHint.ids.length} transactions. Also reclassify{" "}
+                <strong>{vendorHint.count}</strong> other unverified transaction
+                {vendorHint.count === 1 ? "" : "s"} from these vendors as{" "}
+                <strong>{vendorHint.categoryName}</strong> and create rules?
+              </>
+            )}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setVendorHint(null)}
+              disabled={updateM.isPending || bulkM.isPending}
+            >
+              Dismiss
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                if (vendorHint.kind === "single") {
+                  updateM.mutate({
+                    id: vendorHint.id,
+                    categoryId: vendorHint.categoryId,
+                    applyToVendor: true,
+                  });
+                } else {
+                  bulkM.mutate({
+                    ids: vendorHint.ids,
+                    categoryId: vendorHint.categoryId,
+                    applyToVendor: true,
+                  });
+                }
+              }}
+              disabled={updateM.isPending || bulkM.isPending}
+            >
+              Apply to all
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {bulkM.error ? (
         <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">

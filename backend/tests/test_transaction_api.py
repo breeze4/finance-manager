@@ -172,14 +172,15 @@ class TestUpdateTransaction:
         gid = seed_categories["Groceries"]
         resp = client.patch(f"/api/transactions/{txn.id}", json={"category_id": gid})
         assert resp.status_code == 200
-        assert resp.json()["category_id"] == gid
-        assert resp.json()["category_name"] == "Groceries"
+        body = resp.json()
+        assert body["transaction"]["category_id"] == gid
+        assert body["transaction"]["category_name"] == "Groceries"
 
     def test_patch_verified(self, client: TestClient, db: Session):
         txn = _make_txn(db, import_hash="up2")
         resp = client.patch(f"/api/transactions/{txn.id}", json={"is_verified": True})
         assert resp.status_code == 200
-        assert resp.json()["is_verified"] is True
+        assert resp.json()["transaction"]["is_verified"] is True
 
     def test_patch_not_found(self, client: TestClient):
         resp = client.patch("/api/transactions/99999", json={"is_verified": True})
@@ -195,7 +196,10 @@ class TestUpdateTransaction:
     ):
         txn = _make_txn(db, vendor="Acme", import_hash="rule1")
         gid = seed_categories["Groceries"]
-        resp = client.patch(f"/api/transactions/{txn.id}", json={"category_id": gid})
+        resp = client.patch(
+            f"/api/transactions/{txn.id}",
+            json={"category_id": gid, "apply_to_vendor": True},
+        )
         assert resp.status_code == 200
 
         rules = (
@@ -212,11 +216,36 @@ class TestUpdateTransaction:
         t1 = _make_txn(db, vendor="Acme", is_verified=False, import_hash="prop1")
         t2 = _make_txn(db, vendor="Acme", is_verified=False, import_hash="prop2")
 
-        resp = client.patch(f"/api/transactions/{t1.id}", json={"category_id": gid})
+        resp = client.patch(
+            f"/api/transactions/{t1.id}",
+            json={"category_id": gid, "apply_to_vendor": True},
+        )
         assert resp.status_code == 200
 
         db.refresh(t2)
         assert t2.category_id == gid
+
+    def test_patch_default_does_not_touch_siblings(
+        self, client: TestClient, db: Session, seed_categories
+    ):
+        """apply_to_vendor defaults False — only the target row changes."""
+        gid = seed_categories["Groceries"]
+        t1 = _make_txn(db, vendor="Acme", is_verified=False, import_hash="def1")
+        t2 = _make_txn(db, vendor="Acme", is_verified=False, import_hash="def2")
+
+        resp = client.patch(f"/api/transactions/{t1.id}", json={"category_id": gid})
+        assert resp.status_code == 200
+        body = resp.json()
+        # Sibling stays unchanged
+        db.refresh(t2)
+        assert t2.category_id is None
+        # Hint count surfaces the would-be-affected siblings
+        assert body["vendor_match_count"] == 1
+        # No rule created
+        rules = (
+            db.query(ClassificationRule).filter(ClassificationRule.vendor_pattern == "Acme").all()
+        )
+        assert rules == []
 
     def test_patch_does_not_touch_verified_siblings(
         self, client: TestClient, db: Session, seed_categories
@@ -232,7 +261,10 @@ class TestUpdateTransaction:
             import_hash="vk2",
         )
 
-        resp = client.patch(f"/api/transactions/{t1.id}", json={"category_id": gid})
+        resp = client.patch(
+            f"/api/transactions/{t1.id}",
+            json={"category_id": gid, "apply_to_vendor": True},
+        )
         assert resp.status_code == 200
 
         db.refresh(t2)
@@ -245,9 +277,15 @@ class TestUpdateTransaction:
         did = seed_categories["Dining"]
         txn = _make_txn(db, vendor="Acme", import_hash="dup1")
 
-        r1 = client.patch(f"/api/transactions/{txn.id}", json={"category_id": gid})
+        r1 = client.patch(
+            f"/api/transactions/{txn.id}",
+            json={"category_id": gid, "apply_to_vendor": True},
+        )
         assert r1.status_code == 200
-        r2 = client.patch(f"/api/transactions/{txn.id}", json={"category_id": did})
+        r2 = client.patch(
+            f"/api/transactions/{txn.id}",
+            json={"category_id": did, "apply_to_vendor": True},
+        )
         assert r2.status_code == 200
 
         rules = (
@@ -276,6 +314,33 @@ class TestBulkUpdate:
             r = client.get(f"/api/transactions/{tid}")
             assert r.json()["category_id"] == gid
 
+    def test_bulk_update_default_does_not_create_rules(
+        self, client: TestClient, db: Session, seed_categories
+    ):
+        """apply_to_vendor defaults False — bulk just updates the selected ids."""
+        gid = seed_categories["Groceries"]
+        t1 = _make_txn(db, vendor="Acme", import_hash="dbu1")
+        t2 = _make_txn(db, vendor="Acme", import_hash="dbu2")
+        sibling = _make_txn(db, vendor="Acme", is_verified=False, import_hash="dbu3")
+
+        resp = client.post(
+            "/api/transactions/bulk-update",
+            json={"ids": [t1.id, t2.id], "category_id": gid},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["updated"] == 2
+        assert body["vendor_match_count"] == 1
+        # No rule created
+        assert (
+            db.query(ClassificationRule).filter(ClassificationRule.vendor_pattern == "Acme").count()
+            == 0
+        )
+        # Sibling NOT touched
+        db.refresh(sibling)
+        assert sibling.category_id is None
+        assert sibling.is_verified is False
+
     def test_bulk_update_empty_ids(self, client: TestClient):
         resp = client.post(
             "/api/transactions/bulk-update",
@@ -296,7 +361,7 @@ class TestBulkUpdate:
         ids = [a1.id, a2.id, a3.id, b1.id, b2.id]
         resp = client.post(
             "/api/transactions/bulk-update",
-            json={"ids": ids, "category_id": gid},
+            json={"ids": ids, "category_id": gid, "apply_to_vendor": True},
         )
         assert resp.status_code == 200
         assert resp.json()["updated"] == 5

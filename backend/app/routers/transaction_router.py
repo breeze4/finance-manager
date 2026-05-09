@@ -93,7 +93,25 @@ def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
     return _txn_to_response(txn)
 
 
-@router.patch("/{transaction_id}", response_model=TransactionResponse)
+def _count_other_unverified_with_vendors(
+    db: Session, vendors: list[str], excluded_ids: list[int]
+) -> int:
+    """Count unverified transactions matching any of ``vendors`` that aren't
+    already in ``excluded_ids``. Used to surface the "Apply to all from this
+    vendor?" hint in the UI after a category change."""
+    if not vendors:
+        return 0
+    q = (
+        db.query(Transaction)
+        .filter(Transaction.is_verified.is_(False))
+        .filter(Transaction.vendor.in_(vendors))
+    )
+    if excluded_ids:
+        q = q.filter(Transaction.id.notin_(excluded_ids))
+    return q.count()
+
+
+@router.patch("/{transaction_id}")
 def update_transaction(
     transaction_id: int,
     body: TransactionUpdate,
@@ -116,12 +134,20 @@ def update_transaction(
     if txn is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-    # Auto-create classification rule when category changes
+    vendor_match_count = 0
     if body.category_id is not None:
-        build_ingestion(db).reclassify_vendor(txn.vendor, body.category_id)
-        db.commit()
+        if body.apply_to_vendor:
+            build_ingestion(db).reclassify_vendor(txn.vendor, body.category_id)
+            db.commit()
+        else:
+            vendor_match_count = _count_other_unverified_with_vendors(
+                db, [txn.vendor], [transaction_id]
+            )
 
-    return _txn_to_response(txn)
+    return {
+        "transaction": _txn_to_response(txn),
+        "vendor_match_count": vendor_match_count,
+    }
 
 
 @router.post("/bulk-update")
@@ -140,7 +166,7 @@ def bulk_update_transactions(body: BulkUpdateRequest, db: Session = Depends(get_
 
     count = transaction_service.bulk_update_transactions(db, body.ids, **kwargs)
 
-    # Auto-create rules per vendor when category is set via bulk update
+    vendor_match_count = 0
     if body.category_id is not None:
         txns = db.query(Transaction).filter(Transaction.id.in_(body.ids)).all()
         seen_lower: set[str] = set()
@@ -150,13 +176,15 @@ def bulk_update_transactions(body: BulkUpdateRequest, db: Session = Depends(get_
             if key not in seen_lower:
                 seen_lower.add(key)
                 unique_vendors.append(txn.vendor)
-        ingestion = build_ingestion(db)
-        for vendor in unique_vendors:
-            ingestion.reclassify_vendor(vendor, body.category_id)
-        # Also mark all as verified
-        db.query(Transaction).filter(Transaction.id.in_(body.ids)).update(
-            {"is_verified": True}, synchronize_session="fetch"
-        )
-        db.commit()
+        if body.apply_to_vendor:
+            ingestion = build_ingestion(db)
+            for vendor in unique_vendors:
+                ingestion.reclassify_vendor(vendor, body.category_id)
+            db.query(Transaction).filter(Transaction.id.in_(body.ids)).update(
+                {"is_verified": True}, synchronize_session="fetch"
+            )
+            db.commit()
+        else:
+            vendor_match_count = _count_other_unverified_with_vendors(db, unique_vendors, body.ids)
 
-    return {"updated": count}
+    return {"updated": count, "vendor_match_count": vendor_match_count}
