@@ -9,9 +9,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { listAccounts } from "@/api/accounts";
-import { useGlobalFilters } from "@/hooks/useGlobalFilters";
+import { useGlobalFilters, type DateRangeLabel } from "@/hooks/useGlobalFilters";
 
-const dateRanges = [
+const dateRanges: DateRangeLabel[] = [
   "This Month",
   "Last 30 Days",
   "This Year",
@@ -31,7 +31,7 @@ export function TopBar({ title }: TopBarProps) {
     location.pathname.startsWith("/coast-fire") ||
     location.pathname.startsWith("/mortgage");
 
-  const { accountId, setAccountId } = useGlobalFilters();
+  const { accountId, setAccountId, dateRange, setDateRange } = useGlobalFilters();
   const accountsQ = useQuery({
     queryKey: ["accounts"],
     queryFn: () => listAccounts(),
@@ -48,7 +48,7 @@ export function TopBar({ title }: TopBarProps) {
       </div>
       {!isCalculatorRoute && (
         <div className="flex items-center gap-3">
-          <Select defaultValue="This Month">
+          <Select value={dateRange} onValueChange={(v) => setDateRange(v as DateRangeLabel)}>
             <SelectTrigger className="w-[150px] h-8 text-xs bg-secondary border-border">
               <SelectValue />
             </SelectTrigger>

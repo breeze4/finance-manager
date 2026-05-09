@@ -147,11 +147,12 @@ export default function Transactions() {
   const [filters, setFilters] = useState<FilterState>(INITIAL_FILTERS);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
-  const { accountId } = useGlobalFilters();
+  const { accountId, resolvedRange } = useGlobalFilters();
+  const { dateFrom, dateTo } = resolvedRange;
 
   useEffect(() => {
     setFilters((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
-  }, [accountId]);
+  }, [accountId, dateFrom, dateTo]);
 
   const categoriesQ = useQuery({
     queryKey: ["categories"],
@@ -164,13 +165,15 @@ export default function Transactions() {
     return {
       ...params,
       accountId: accountId ?? undefined,
+      dateFrom,
+      dateTo,
       search: filters.search.trim() || undefined,
       page: filters.page,
       pageSize: PAGE_SIZE,
       sortBy: filters.sortBy,
       sortDir: filters.sortDir,
     };
-  }, [filters, categoryList, accountId]);
+  }, [filters, categoryList, accountId, dateFrom, dateTo]);
 
   const toggleSort = (key: SortKey) => {
     setFilters((prev) => {
