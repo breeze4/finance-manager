@@ -396,6 +396,13 @@ export function CoastFireResults({ state }: CoastFireResultsProps) {
   const tooltips = useMemo(() => coastFireTooltipData(state, derived), [state, derived]);
 
   const projectionRows = useMemo(() => {
+    // Guard against invariant-violating intermediate states while the user
+    // is mid-typing inputs (e.g. typing "40" into current age while
+    // retirement age is still 30). The chart fn throws on those; bail to an
+    // empty series until inputs are consistent.
+    if (state.current_savings < 0) return [];
+    if (state.current_age < 0) return [];
+    if (state.retirement_age < state.current_age) return [];
     const chart = generateCoastFireProjectionChart(
       state.current_savings,
       state.current_age,
@@ -409,6 +416,8 @@ export function CoastFireResults({ state }: CoastFireResultsProps) {
   }, [state, derived]);
 
   const requiredSavingsRows = useMemo(() => {
+    if (derived.activeTargetAmount <= 0) return [];
+    if (state.retirement_age <= 0) return [];
     const chart = generateRequiredSavingsByAgeChart(
       derived.activeTargetAmount,
       state.retirement_age,
