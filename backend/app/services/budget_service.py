@@ -1,12 +1,15 @@
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from sqlalchemy import extract, func
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import Budget, BudgetMonthlyOverride, Category, Transaction
+from app.services import spending
 from app.services.category_filters import not_excluded_from_budget
+from app.services.spending import BudgetTarget, Period
 
 
 @dataclass
@@ -337,63 +340,47 @@ class ActualVsBudgetResult:
 def get_actual_vs_budget(db: Session, *, year: int) -> ActualVsBudgetResult:
     """Compare actual spending against budgets for each category and month.
 
-    Effective budget = monthly override if exists, else baseline monthly_amount.
-    Actual = sum of non-transfer outflow transactions for that category/month.
+    Effective budget = ``BudgetTarget`` resolution per-row. Rollover-mode
+    budgets fold in prior-month surplus/deficit carry; non-rollover use
+    the override-or-baseline lookup. Actual = sum of non-transfer outflow
+    transactions for that category/month, sourced once via
+    ``spending.by_category_and_month``.
     """
+    period = Period.year(year)
+    actuals = spending.by_category_and_month(db, period)
     budgets = list_budgets(db, year=year)
 
-    # Build override lookup: budget_id -> {month: amount}
-    override_map: dict[int, dict[int, float]] = {}
-    for b in budgets:
-        override_map[b.id] = {o.month: o.amount for o in b.monthly_overrides}
-
-    # Get actual monthly spending per category for this year.
-    actual_rows = (
-        db.query(Transaction)
-        .filter(
-            Transaction.is_transfer.is_(False),
-            not_excluded_from_budget(),
-            Transaction.amount < 0,
-            extract("year", Transaction.date) == year,
-        )
-        .with_entities(
-            Transaction.category_id,
-            extract("month", Transaction.date).label("mo"),
-            func.sum(Transaction.amount).label("total"),
-        )
-        .group_by(Transaction.category_id, extract("month", Transaction.date))
-        .all()
-    )
-
-    # Build actual lookup: (category_id, month) -> abs(total)
-    actual_map: dict[tuple[int, int], float] = {}
-    for row in actual_rows:
-        if row.category_id is not None:
-            actual_map[(row.category_id, int(row.mo))] = round(abs(row.total), 2)
-
-    entries = []
+    entries: list[ActualVsBudgetEntry] = []
     month_totals: dict[int, dict[str, float]] = defaultdict(
         lambda: {"budgeted": 0.0, "actual": 0.0}
     )
 
     for budget in budgets:
-        overrides = override_map.get(budget.id, {})
-        cat_name = budget.category.name if budget.category else "Unknown"
-        cat_bucket = budget.category.csp_bucket if budget.category else None
-        is_pre_tax = bool(budget.category.is_pre_tax) if budget.category else False
+        cat = budget.category
+        cat_name = cat.name if cat else "Unknown"
+        cat_bucket = cat.csp_bucket if cat else None
+        is_pre_tax = bool(cat.is_pre_tax) if cat else False
 
-        # For rollover budgets, accumulate surplus/deficit across months.
-        rollover_carry = 0.0
+        if is_pre_tax:
+            # Pre-tax actuals are synthetic — see the comment in the per-month
+            # loop. For rollover, this means the carry collapses to zero each
+            # month: the override-or-baseline always equals the actual. Pre-fill
+            # ``actuals_by_month`` with the override-or-baseline so the rollover
+            # walk produces zero carry, matching the prior implementation.
+            overrides_only = BudgetTarget.with_overrides(budget)
+            actuals_by_month = {m: overrides_only.effective(year, m) for m in range(1, 13)}
+        else:
+            actuals_by_month = {
+                m: actuals.get((budget.category_id, year, m), Decimal("0")) for m in range(1, 13)
+            }
+        target = (
+            BudgetTarget.with_rollover(budget, actuals_by_month)
+            if budget.rollover_mode
+            else BudgetTarget.with_overrides(budget)
+        )
 
         for month in range(1, 13):
-            base_target = overrides.get(month, budget.monthly_amount)
-
-            if budget.rollover_mode:
-                # Effective budget = base + accumulated carry from prior months.
-                target = base_target + rollover_carry
-            else:
-                target = base_target
-
+            target_amount = float(target.effective(year, month))
             # Pre-tax categories never produce outflow transactions (the money
             # is withheld before it lands in any tracked account). For tracking
             # purposes, treat the planned baseline as the "actual" so the CSP
@@ -402,18 +389,18 @@ def get_actual_vs_budget(db: Session, *, year: int) -> ActualVsBudgetResult:
             # categories with no Budget row don't appear at all (consistent
             # with the rest of the system).
             if is_pre_tax:
-                actual = round(target, 2)
+                actual = round(target_amount, 2)
             else:
-                actual = actual_map.get((budget.category_id, month), 0.0)
-            diff = round(target - actual, 2)
-            pct = round(actual / target * 100, 1) if target > 0 else 0.0
+                actual = round(float(actuals_by_month[month]), 2)
+            diff = round(target_amount - actual, 2)
+            pct = round(actual / target_amount * 100, 1) if target_amount > 0 else 0.0
 
             entries.append(
                 ActualVsBudgetEntry(
                     category_id=budget.category_id,
                     category_name=cat_name,
                     month=month,
-                    budget_target=round(target, 2),
+                    budget_target=round(target_amount, 2),
                     actual_spend=actual,
                     difference=diff,
                     percentage=pct,
@@ -422,12 +409,8 @@ def get_actual_vs_budget(db: Session, *, year: int) -> ActualVsBudgetResult:
                 )
             )
 
-            month_totals[month]["budgeted"] += target
+            month_totals[month]["budgeted"] += target_amount
             month_totals[month]["actual"] += actual
-
-            if budget.rollover_mode:
-                # Carry = effective_budget - actual. Positive = surplus, negative = deficit.
-                rollover_carry = target - actual
 
     monthly_rollups = []
     for month in range(1, 13):

@@ -36,7 +36,8 @@ from sqlalchemy.orm import Session
 
 from app.models import Budget, Category
 from app.models.category import CspBucket
-from app.services import budget_service, net_income_service
+from app.services import net_income_service, spending
+from app.services.spending import BudgetTarget, Period
 
 # Categories that intentionally have ``csp_bucket=NULL`` per the
 # user-approved seed (Step 1 handoff). They are not a misconfiguration —
@@ -74,9 +75,11 @@ class BucketRollup:
     Fields:
       bucket: one of ``"fixed" | "investments" | "savings" | "guilt_free"``.
       numerator: sum of category baselines (incl. pre-tax) in this bucket
-                 for planning; sum of per-category ``actual_spend`` (which
-                 already equals the effective budget for pre-tax categories
-                 — see ``budget_service.get_actual_vs_budget``) for actuals.
+                 for planning; sum of per-category outflow magnitudes (from
+                 ``spending.by_category``) for actuals — with pre-tax
+                 categories' effective targets substituted in so they
+                 contribute their planned amount even when no spending is
+                 recorded.
       denominator: ``net_income + total_pre_tax`` — same on every record,
                    identical math across modes.
       percentage: ``numerator / denominator * 100`` rounded to 1 decimal.
@@ -127,10 +130,11 @@ class ActualsRollup:
     """Top-level response for the actuals rollup.
 
     Shape mirrors :class:`PlanningRollup` exactly. The numerator math
-    differs (sum of per-category ``actual_spend`` from
-    ``budget_service.get_actual_vs_budget`` for the requested month);
-    the denominator math is the same so the percentages are directly
-    comparable between modes.
+    differs (sum of per-category outflow magnitudes from
+    ``spending.by_category`` for the requested month, with pre-tax
+    categories substituted to their effective target); the denominator
+    math is the same so the percentages are directly comparable between
+    modes.
 
     Each ``BucketRollup`` in ``buckets`` carries the actuals percentage
     in ``percentage`` plus the planned percentage in ``planned_percentage``
@@ -166,6 +170,7 @@ def get_planning_rollup(db: Session, month_yyyymm: int) -> PlanningRollup:
     dashboard reflects the user's plan, not the latest in-flight tweak.
     """
     year = month_yyyymm // 100
+    month = month_yyyymm % 100
 
     categories: list[Category] = db.query(Category).all()
     budgets = db.query(Budget).filter(Budget.year == year).all()
@@ -180,7 +185,7 @@ def get_planning_rollup(db: Session, month_yyyymm: int) -> PlanningRollup:
         if cat.exclude_from_budget:
             continue
 
-        baseline = _baseline(budget_by_cat.get(cat.id))
+        baseline = BudgetTarget.baseline(budget_by_cat.get(cat.id)).effective(year, month)
 
         if cat.csp_bucket is None:
             # Either intentionally NULL (Income/Transfers/Uncategorized) or
@@ -221,13 +226,14 @@ def get_planning_rollup(db: Session, month_yyyymm: int) -> PlanningRollup:
 def get_actuals_rollup(db: Session, month_yyyymm: int) -> ActualsRollup:
     """Compute the four-bucket actuals rollup for a given month.
 
-    Numerator per bucket: sum of ``actual_spend`` from
-    ``budget_service.get_actual_vs_budget`` entries that fall in the
-    requested month, grouped by ``Category.csp_bucket``. Pre-tax
-    categories naturally contribute their effective budget here because
-    the budget service already substitutes ``actual = target`` for them
-    — so this function does NOT separately re-add pre-tax baselines (that
-    would double-count).
+    Numerator per bucket: sum of per-category outflow magnitudes from
+    ``spending.by_category`` for the requested month, grouped by
+    ``Category.csp_bucket``. Pre-tax categories typically have no
+    transactions in tracked accounts; for them, the effective budget
+    target (``BudgetTarget.with_overrides``) is substituted as the
+    "actual" so they contribute their planned amount to the bucket
+    numerator (matching the old ``budget_service.get_actual_vs_budget``
+    semantics).
 
     Denominator: same as planning — ``net_income(month) + sum(pre_tax
     baselines)`` — so percentages are directly comparable between modes.
@@ -241,33 +247,57 @@ def get_actuals_rollup(db: Session, month_yyyymm: int) -> ActualsRollup:
 
     categories: dict[int, Category] = {c.id: c for c in db.query(Category).all()}
 
-    # Per-category actuals for the year (one query, then filter by month).
-    actual_result = budget_service.get_actual_vs_budget(db, year=year)
+    # Per-category actuals fetched directly from the spending primitive (no
+    # ``budget_service`` indirection). Pre-tax categories typically have no
+    # transactions in tracked accounts, so they won't appear here — we
+    # synthesize their numerator contribution from ``BudgetTarget.with_overrides``
+    # in the second loop below.
+    actuals_by_cat = spending.by_category(db, Period.yyyymm(month_yyyymm))
+
+    budgets = db.query(Budget).filter(Budget.year == year).all()
+    budget_by_cat: dict[int, Budget] = {b.category_id: b for b in budgets}
 
     bucket_numerators: dict[str, Decimal] = {b: Decimal("0") for b in _BUCKET_ORDER}
     pre_tax_total = Decimal("0")
 
-    # Sum actuals by bucket for the requested month only.
-    for entry in actual_result.entries:
-        if entry.month != month:
+    # First loop: walk the actuals dict and apply the pre-tax substitution.
+    # Uncategorized rows (cat_id is None) never go into a bucket.
+    for cat_id, actual in actuals_by_cat.items():
+        if cat_id is None:
             continue
-        cat = categories.get(entry.category_id)
+        cat = categories.get(cat_id)
         if cat is None or cat.exclude_from_budget:
             continue
         if cat.csp_bucket is None:
-            # Intentionally NULL or misconfigured — neither contributes
-            # to a bucket numerator. The unbucketed-warning surface is
-            # built below from the full Category list.
             continue
+        if cat.is_pre_tax:
+            # Pre-tax substitution: use the effective target as the "actual"
+            # so the planning + actuals modes share their pre-tax bookkeeping.
+            actual = BudgetTarget.with_overrides(budget_by_cat.get(cat_id)).effective(year, month)
         if cat.csp_bucket in bucket_numerators:
-            bucket_numerators[cat.csp_bucket] += Decimal(str(entry.actual_spend))
+            bucket_numerators[cat.csp_bucket] += actual
+
+    # Second loop: pre-tax categories that had no transactions (the common
+    # case — money never lands in a tracked account) still need their
+    # effective target counted in the bucket numerator. Without this, every
+    # pre-tax bucket would read 0 in actuals mode.
+    for cat in categories.values():
+        if not cat.is_pre_tax:
+            continue
+        if cat.exclude_from_budget:
+            continue
+        if cat.csp_bucket is None:
+            continue
+        if cat.id in actuals_by_cat:
+            continue  # already handled by the first loop
+        target = BudgetTarget.with_overrides(budget_by_cat.get(cat.id)).effective(year, month)
+        if cat.csp_bucket in bucket_numerators:
+            bucket_numerators[cat.csp_bucket] += target
 
     # Denominator composition: take_home + pre_tax_total. We compute
     # pre_tax_total from the planning baselines (Budget.monthly_amount) for
     # every pre-tax category — same composition as the planning rollup so
     # the two modes share a denominator.
-    budgets = db.query(Budget).filter(Budget.year == year).all()
-    budget_by_cat: dict[int, Budget] = {b.category_id: b for b in budgets}
     unbucketed: list[dict] = []
     for cat in categories.values():
         if cat.exclude_from_budget:
@@ -277,7 +307,7 @@ def get_actuals_rollup(db: Session, month_yyyymm: int) -> ActualsRollup:
                 unbucketed.append({"id": cat.id, "name": cat.name})
             continue
         if cat.is_pre_tax:
-            pre_tax_total += _baseline(budget_by_cat.get(cat.id))
+            pre_tax_total += BudgetTarget.baseline(budget_by_cat.get(cat.id)).effective(year, month)
 
     take_home = net_income_service.get_for_month(db, month_yyyymm)
     has_net_income = take_home is not None
@@ -326,13 +356,6 @@ def _tracking_status(actual_pct: Decimal, planned_pct: Decimal) -> str:
     if delta < -_TRACKING_TOLERANCE_PTS:
         return "under-plan"
     return "on-track"
-
-
-def _baseline(budget: Budget | None) -> Decimal:
-    """Return Budget.monthly_amount as a Decimal, or 0 if no row exists."""
-    if budget is None:
-        return Decimal("0")
-    return Decimal(str(budget.monthly_amount))
 
 
 def _build_bucket(

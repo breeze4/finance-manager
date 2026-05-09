@@ -50,17 +50,16 @@ Wire shape (in ``app/schemas/stats.py``) is unchanged across modes — only
 budget rollover (spec: Out of Scope).
 """
 
-from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import Budget, Category, Transaction
+from app.models import Budget, Category
 from app.models.category import CspBucket
-from app.services import subscription_due_service
-from app.services.category_filters import not_excluded_from_budget
+from app.services import spending, subscription_due_service
+from app.services.spending import BudgetTarget, Period
 
 # Canonical bucket order — same as csp_rollup_service.
 _BUCKET_ORDER: tuple[str, ...] = (
@@ -173,11 +172,11 @@ def _compute_pace_mode(db: Session, date_from: date, date_to: date) -> MonthlyPa
     """
     year = date_to.year
     month = date_to.month
-    days_in_month = monthrange(year, month)[1]
-    elapsed_days = date_to.day  # inclusive of today
 
-    # Linear pace factor: elapsed / month length.
-    pace_factor = Decimal(elapsed_days) / Decimal(days_in_month)
+    # Linear pace factor: elapsed / month length. ``date_to`` doubles as
+    # "today" in pace mode (the in-progress-current-month invariant
+    # enforced by ``_is_pace_range``).
+    pace_factor = Period.range(date_from, date_to).pace_factor(date_to)
 
     # ---- 1. Load reference data (categories, budgets) ----
     categories: list[Category] = db.query(Category).all()
@@ -193,7 +192,7 @@ def _compute_pace_mode(db: Session, date_from: date, date_to: date) -> MonthlyPa
     subs_due_by_cat = _subs_due_this_month(db, year, month)
 
     # ---- 4. Actual MTD per category in [date_from, date_to] ----
-    actuals_by_cat = _actuals_by_category(db, date_from, date_to)
+    actuals_by_cat = spending.by_category(db, Period.range(date_from, date_to))
     uncategorized_actual = actuals_by_cat.pop(None, Decimal("0"))
 
     # ---- 5. Build per-category pace rows ----
@@ -207,7 +206,7 @@ def _compute_pace_mode(db: Session, date_from: date, date_to: date) -> MonthlyPa
             # Pre-tax categories never appear in pace math.
             continue
 
-        full_budget = _effective_budget(budget_by_cat.get(cat.id), month)
+        full_budget = BudgetTarget.with_overrides(budget_by_cat.get(cat.id)).effective(year, month)
         actual = actuals_by_cat.get(cat.id, Decimal("0"))
         subs_due = subs_due_by_cat.get(cat.id, Decimal("0"))
         subs_hit = subs_already_hit_by_cat.get(cat.id, Decimal("0"))
@@ -294,7 +293,7 @@ def _compute_actual_vs_budget_mode(db: Session, date_from: date, date_to: date) 
 
     No pace fraction; no subscription holdout — both are pace-mode-only.
     """
-    months = _months_overlapping(date_from, date_to)
+    months = Period.range(date_from, date_to).months_overlapping()
 
     # ---- 1. Load reference data (categories + every budget for years touched) ----
     categories: list[Category] = db.query(Category).all()
@@ -305,7 +304,7 @@ def _compute_actual_vs_budget_mode(db: Session, date_from: date, date_to: date) 
     }
 
     # ---- 2. Actual per category in [date_from, date_to] ----
-    actuals_by_cat = _actuals_by_category(db, date_from, date_to)
+    actuals_by_cat = spending.by_category(db, Period.range(date_from, date_to))
     uncategorized_actual = actuals_by_cat.pop(None, Decimal("0"))
 
     # ---- 3. Build per-category rows ----
@@ -323,7 +322,9 @@ def _compute_actual_vs_budget_mode(db: Session, date_from: date, date_to: date) 
         # (if any) for the specific month wins.
         range_budget = Decimal("0")
         for year, month in months:
-            range_budget += _effective_budget(budget_by_cat_year.get((cat.id, year)), month)
+            range_budget += BudgetTarget.with_overrides(
+                budget_by_cat_year.get((cat.id, year))
+            ).effective(year, month)
 
         actual = actuals_by_cat.get(cat.id, Decimal("0"))
 
@@ -375,26 +376,6 @@ def _compute_actual_vs_budget_mode(db: Session, date_from: date, date_to: date) 
 # ---------------------------------------------------------------------------
 
 
-def _months_overlapping(date_from: date, date_to: date) -> list[tuple[int, int]]:
-    """Every ``(year, month)`` such that the calendar month overlaps the range.
-
-    Same definition ``stats_service.get_spending_trend`` uses. Returns
-    them in chronological order. Empty list if ``date_from > date_to``.
-    """
-    months: list[tuple[int, int]] = []
-    if date_from > date_to:
-        return months
-    y, m = date_from.year, date_from.month
-    end_y, end_m = date_to.year, date_to.month
-    while (y, m) <= (end_y, end_m):
-        months.append((y, m))
-        if m == 12:
-            y, m = y + 1, 1
-        else:
-            m += 1
-    return months
-
-
 def _build_bucket_rollups(
     bucket_categories: dict[str, list[CategoryPace]],
 ) -> list[BucketPace]:
@@ -426,48 +407,6 @@ def _build_headline(rows: list[CategoryPace]) -> Headline:
         expected_total=_round_money(expected_total),
         variance=_round_money(actual_total - expected_total),
     )
-
-
-def _effective_budget(budget: Budget | None, month: int) -> Decimal:
-    """Return ``override-or-baseline`` for the given month.
-
-    Pace v1 ignores rollover (spec: Out of Scope).
-    """
-    if budget is None:
-        return Decimal("0")
-    for override in budget.monthly_overrides:
-        if override.month == month:
-            return Decimal(str(override.amount))
-    return Decimal(str(budget.monthly_amount))
-
-
-def _actuals_by_category(db: Session, date_from: date, date_to: date) -> dict[int | None, Decimal]:
-    """Sum non-transfer outflow magnitudes by category for the range.
-
-    Returns a dict keyed by ``category_id`` (None for uncategorized rows).
-    Values are positive Decimals (we abs the negative outflow amounts so
-    actual MTD is naturally a non-negative spending number, matching the
-    rest of the dashboard's display convention).
-
-    ``Category.exclude_from_budget`` rows are dropped via
-    ``not_excluded_from_budget()``.
-    """
-    txns = (
-        db.query(Transaction)
-        .filter(
-            Transaction.is_transfer.is_(False),
-            not_excluded_from_budget(),
-            Transaction.amount < 0,
-            Transaction.date >= date_from,
-            Transaction.date <= date_to,
-        )
-        .all()
-    )
-    out: dict[int | None, Decimal] = {}
-    for txn in txns:
-        key = txn.category_id  # may be None
-        out[key] = out.get(key, Decimal("0")) + abs(Decimal(str(txn.amount)))
-    return out
 
 
 def _subs_due_this_month(db: Session, year: int, month: int) -> dict[int, Decimal]:

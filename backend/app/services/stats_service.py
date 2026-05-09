@@ -1,11 +1,13 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import extract, func
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import Budget, Category, Transaction
+from app.services import spending
 from app.services.category_filters import not_excluded_from_budget
+from app.services.spending import BudgetTarget, Period
 
 
 def get_summary(
@@ -15,72 +17,56 @@ def get_summary(
     date_to: date | None = None,
 ) -> dict:
     """Compute spending summary. Excludes transfers and exclude-from-budget categories."""
-    base = db.query(Transaction).filter(
-        Transaction.is_transfer.is_(False),
-        not_excluded_from_budget(),
-    )
+    period = Period.range(date_from or date.min, date_to or date.max)
 
-    if date_from is not None:
-        base = base.filter(Transaction.date >= date_from)
-    if date_to is not None:
-        base = base.filter(Transaction.date <= date_to)
-
-    # Total spending (negative amounts = outflow)
-    spending_result = (
-        base.filter(Transaction.amount < 0)
-        .with_entities(func.coalesce(func.sum(Transaction.amount), 0.0))
-        .scalar()
-    )
-    total_spending = abs(spending_result)
-
-    # Total income (positive amounts = inflow)
-    income_result = (
-        base.filter(Transaction.amount > 0)
-        .with_entities(func.coalesce(func.sum(Transaction.amount), 0.0))
-        .scalar()
-    )
-    total_income = float(income_result)
+    total_spending = spending.range_total(db, period)
+    total_income = spending.income_total(db, period)
 
     # Savings rate
-    savings_rate = 0.0
+    savings_rate = Decimal("0")
     if total_income > 0:
         savings_rate = (total_income - total_spending) / total_income
 
-    # Transaction count
-    transaction_count = base.count()
-
-    # Top categories by spending (top 10, negative amounts only)
-    category_rows = (
-        base.filter(Transaction.amount < 0)
-        .join(Category, Transaction.category_id == Category.id, isouter=True)
-        .with_entities(
-            Transaction.category_id,
-            func.coalesce(Category.name, "Uncategorized").label("category_name"),
-            func.sum(Transaction.amount).label("total"),
+    # Transaction count — kept inline; no spending.count function in scope.
+    # Mirrors the structural filter applied inside spending.* (no sign filter).
+    transaction_count = (
+        db.query(func.count(Transaction.id))
+        .filter(
+            Transaction.is_transfer.is_(False),
+            not_excluded_from_budget(),
+            Transaction.date >= period.start,
+            Transaction.date <= period.end,
         )
-        .group_by(Transaction.category_id)
-        .order_by(func.sum(Transaction.amount).asc())  # most negative first
-        .limit(10)
-        .all()
+        .scalar()
+        or 0
     )
 
+    # Top categories by spending: top 10 by Decimal value, descending.
+    by_cat = spending.by_category(db, period)
+    top_keys = sorted(by_cat.items(), key=lambda kv: kv[1], reverse=True)[:10]
+    cat_ids = {k for k, _ in top_keys if k is not None}
+    cat_names = (
+        {c.id: c.name for c in db.query(Category).filter(Category.id.in_(cat_ids)).all()}
+        if cat_ids
+        else {}
+    )
     top_categories = []
-    for row in category_rows:
-        cat_total = abs(row.total)
-        pct = (cat_total / total_spending * 100) if total_spending > 0 else 0.0
+    for cid, total in top_keys:
+        name = cat_names.get(cid, "Uncategorized") if cid is not None else "Uncategorized"
+        pct = float(total) / float(total_spending) * 100 if total_spending > 0 else 0.0
         top_categories.append(
             {
-                "category_id": row.category_id,
-                "category_name": row.category_name,
-                "total": cat_total,
+                "category_id": cid,
+                "category_name": name,
+                "total": float(total),
                 "percentage": round(pct, 1),
             }
         )
 
     return {
-        "total_spending": round(total_spending, 2),
-        "total_income": round(total_income, 2),
-        "savings_rate": round(savings_rate, 4),
+        "total_spending": round(float(total_spending), 2),
+        "total_income": round(float(total_income), 2),
+        "savings_rate": round(float(savings_rate), 4),
         "transaction_count": transaction_count,
         "top_categories": top_categories,
     }
@@ -93,43 +79,29 @@ def get_monthly_stats(
     category_id: int | None = None,
 ) -> list[dict]:
     """Per-month spending by category. Excludes transfers and exclude-from-budget categories."""
-    base = db.query(Transaction).filter(
-        Transaction.is_transfer.is_(False),
-        not_excluded_from_budget(),
-        Transaction.amount < 0,
-        extract("year", Transaction.date) == year,
-    )
-
+    keyed = spending.by_category_and_month(db, Period.year(year))
     if category_id is not None:
-        base = base.filter(Transaction.category_id == category_id)
+        keyed = {k: v for k, v in keyed.items() if k[0] == category_id}
 
-    rows = (
-        base.join(Category, Transaction.category_id == Category.id, isouter=True)
-        .with_entities(
-            extract("month", Transaction.date).label("month"),
-            Transaction.category_id,
-            func.coalesce(Category.name, "Uncategorized").label("category_name"),
-            func.sum(Transaction.amount).label("total"),
-        )
-        .group_by(
-            extract("month", Transaction.date),
-            Transaction.category_id,
-        )
-        .order_by(
-            extract("month", Transaction.date),
-            func.sum(Transaction.amount).asc(),
-        )
-        .all()
+    # Resolve category names in one query.
+    cat_ids = {k[0] for k in keyed if k[0] is not None}
+    cats = (
+        {c.id: c.name for c in db.query(Category).filter(Category.id.in_(cat_ids)).all()}
+        if cat_ids
+        else {}
     )
 
+    # Sort by month ascending, then by largest magnitude first within a month
+    # (mirrors the previous ``func.sum(amount).asc()`` — most negative first
+    # is largest magnitude first because outflow amounts are negative).
     return [
         {
-            "month": int(row.month),
-            "category_id": row.category_id,
-            "category_name": row.category_name,
-            "total": round(abs(row.total), 2),
+            "month": m,
+            "category_id": cid,
+            "category_name": cats.get(cid, "Uncategorized") if cid is not None else "Uncategorized",
+            "total": round(float(total), 2),
         }
-        for row in rows
+        for (cid, _y, m), total in sorted(keyed.items(), key=lambda kv: (kv[0][2], -kv[1]))
     ]
 
 
@@ -153,63 +125,15 @@ def get_spending_trend(
       - ``expected`` — sum of effective monthly budgets (override > baseline)
         across all non-pre-tax, non-excluded-from-budget categories for that
         ``(year, month)``.
-
-    Mirrors the SQLAlchemy patterns of ``get_monthly_stats`` for the actual
-    side and the inline override-or-baseline lookup used by ``pace_service``
-    for the expected side. Step 5's range picker reuses this with arbitrary
-    ranges.
     """
     # ---- 1. Enumerate every (year, month) overlapping the range ----
-    months: list[tuple[int, int]] = []
-    if date_from <= date_to:
-        y, m = date_from.year, date_from.month
-        end_y, end_m = date_to.year, date_to.month
-        while (y, m) <= (end_y, end_m):
-            months.append((y, m))
-            if m == 12:
-                y, m = y + 1, 1
-            else:
-                m += 1
-
-    if not months:
+    if date_from > date_to:
         return []
+    period = Period.range(date_from, date_to)
+    months = period.months_overlapping()
 
     # ---- 2. Actual: per-month sum of non-transfer outflows in the range ----
-    # Pre-tax categories are excluded by filtering on Category.is_pre_tax.
-    # We left-outer join Category so uncategorized rows (category_id IS NULL)
-    # naturally fall through (Category.is_pre_tax IS NULL → not True → kept).
-    rows = (
-        db.query(Transaction)
-        .filter(
-            Transaction.is_transfer.is_(False),
-            not_excluded_from_budget(),
-            Transaction.amount < 0,
-            Transaction.date >= date_from,
-            Transaction.date <= date_to,
-        )
-        .join(Category, Transaction.category_id == Category.id, isouter=True)
-        .filter(
-            # Keep uncategorized (Category.is_pre_tax IS NULL) and non-pre-tax.
-            (Category.is_pre_tax.is_(False)) | (Category.id.is_(None))
-        )
-        .with_entities(
-            extract("year", Transaction.date).label("year"),
-            extract("month", Transaction.date).label("month"),
-            func.sum(Transaction.amount).label("total"),
-        )
-        .group_by(
-            extract("year", Transaction.date),
-            extract("month", Transaction.date),
-        )
-        .all()
-    )
-    actual_by_month: dict[tuple[int, int], Decimal] = {}
-    for row in rows:
-        key = (int(row.year), int(row.month))
-        if row.total is None:
-            actual_by_month[key] = Decimal("0")
-        else:
-            actual_by_month[key] = abs(Decimal(str(row.total)))
+    actual_by_month = spending.by_year_month(db, period, exclude_pre_tax=True)
 
     # ---- 3. Expected: per-month sum of effective monthly budgets ----
     # Effective = override-or-baseline. Categories with exclude_from_budget or
@@ -238,7 +162,7 @@ def get_spending_trend(
         total = Decimal("0")
         for cat in categories:
             budget = budget_index.get((cat.id, year))
-            total += _effective_monthly_budget(budget, month)
+            total += BudgetTarget.with_overrides(budget).effective(year, month)
         expected_by_month[(year, month)] = total
 
     # ---- 4. Compose the chronological result ----
@@ -254,18 +178,3 @@ def get_spending_trend(
             }
         )
     return result
-
-
-def _effective_monthly_budget(budget: Budget | None, month: int) -> Decimal:
-    """Return ``override-or-baseline`` for the given month.
-
-    Duplicated from ``pace_service._effective_budget`` (private over there)
-    to keep ``budget_service`` must-not-touch and avoid an awkward cross-
-    service import for a 2-line lookup. Same semantics.
-    """
-    if budget is None:
-        return Decimal("0")
-    for override in budget.monthly_overrides:
-        if override.month == month:
-            return Decimal(str(override.amount))
-    return Decimal(str(budget.monthly_amount))
