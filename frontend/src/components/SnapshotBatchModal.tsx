@@ -24,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import type { Account, AccountType } from "@/api/accounts";
 import type { LatestBalance, SnapshotBatchEntry } from "@/api/snapshots";
+import { formatCurrency } from "@/lib/format";
 
 const TYPE_LABELS: Record<AccountType, string> = {
   checking: "Checking",
@@ -40,13 +41,6 @@ function todayIso(): string {
   const m = String(now.getMonth() + 1).padStart(2, "0");
   const d = String(now.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
-}
-
-function formatHintAmount(n: number): string {
-  return n.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
 }
 
 export interface SnapshotBatchModalProps {
@@ -181,7 +175,7 @@ export function SnapshotBatchModal({
                     </div>
                     {last && last.balance != null && last.as_of_date && (
                       <p className="text-xs text-muted-foreground pl-1">
-                        last: ${formatHintAmount(last.balance)} on{" "}
+                        last: {formatCurrency(last.balance)} on{" "}
                         {last.as_of_date}
                       </p>
                     )}

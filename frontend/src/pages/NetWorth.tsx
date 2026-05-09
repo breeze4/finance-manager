@@ -37,6 +37,7 @@ import {
   type SnapshotBatchEntry,
   type SnapshotBatchResponse
 } from "@/api/snapshots";
+import { formatCurrency } from "@/lib/format";
 
 const TYPE_LABELS: Record<AccountType, string> = {
   checking: "Checking",
@@ -52,14 +53,10 @@ const LATEST_KEY = ["net-worth", "latest"] as const;
 const SERIES_KEY_PREFIX = ["net-worth", "series"] as const;
 
 function formatBalance(balance: number, type: AccountType): string {
-  const formatted = balance.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
   if (type === "credit_card") {
-    return `−$${formatted}`;
+    return formatCurrency(-balance);
   }
-  return `$${formatted}`;
+  return formatCurrency(balance);
 }
 
 export default function NetWorth() {

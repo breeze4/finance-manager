@@ -25,7 +25,7 @@ describe("RecurringRemainingCard", () => {
 
   it("renders the formatted total, count, and link when total > 0", () => {
     renderWithRouter(<RecurringRemainingCard total={94.5} count={3} loading={false} />);
-    expect(screen.getByText("$94.50")).toBeInTheDocument();
+    expect(screen.getByText("$95")).toBeInTheDocument();
     expect(screen.getByText(/3 subscriptions/i)).toBeInTheDocument();
     const link = screen.getByRole("link", { name: /view all/i });
     expect(link).toHaveAttribute("href", "/subscriptions");

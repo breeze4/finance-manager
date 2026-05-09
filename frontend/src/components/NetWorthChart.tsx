@@ -20,29 +20,17 @@ import {
 } from "recharts";
 
 import type { NetWorthPoint } from "@/api/snapshots";
+import { formatCurrency } from "@/lib/format";
 
 export interface NetWorthChartProps {
   data: NetWorthPoint[];
   loading: boolean;
 }
 
-const CURRENCY = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 0
-});
-
-const CURRENCY_PRECISE = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2
-});
-
 function formatYAxis(value: number): string {
   if (Math.abs(value) >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
   if (Math.abs(value) >= 1_000) return `$${(value / 1_000).toFixed(0)}k`;
-  return CURRENCY.format(value);
+  return formatCurrency(value);
 }
 
 function formatTooltipDate(iso: string): string {
@@ -78,7 +66,7 @@ export function NetWorthChart({ data, loading }: NetWorthChartProps) {
         <XAxis dataKey="date" className="text-xs" minTickGap={32} />
         <YAxis tickFormatter={formatYAxis} className="text-xs" width={80} />
         <Tooltip
-          formatter={(value: number) => CURRENCY_PRECISE.format(value)}
+          formatter={(value: number) => formatCurrency(value)}
           labelFormatter={(label: string) => formatTooltipDate(label)}
         />
         <Line

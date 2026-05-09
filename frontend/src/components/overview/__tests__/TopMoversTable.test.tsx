@@ -87,9 +87,9 @@ describe("TopMoversTable", () => {
       }),
     ];
     render(<TopMoversTable categories={cats} />);
-    const over = screen.getByText("+$50.00");
+    const over = screen.getByText("+$50");
     expect(over).toHaveClass("text-destructive");
-    const under = screen.getByText("-$60.00");
+    const under = screen.getByText("-$60");
     expect(under).toHaveClass("text-success");
   });
 
@@ -109,7 +109,7 @@ describe("TopMoversTable", () => {
     // "Uncategorized" — assert at least one is present.
     expect(screen.getAllByText("Uncategorized").length).toBeGreaterThanOrEqual(1);
     // Variance still renders with the over-pace styling (positive variance).
-    expect(screen.getByText("+$75.00")).toHaveClass("text-destructive");
+    expect(screen.getByText("+$75")).toHaveClass("text-destructive");
   });
 
   it("renders bucket label with hyphenated title-case for guilt_free", () => {
