@@ -110,6 +110,19 @@ Matched payment pairs are:
 - **Matched payments table**: Date, transfer direction (from → to account), amount, status badge
 - **Unmatched candidates table**: Transactions that look like transfers but haven't been matched yet. Shows date, account, description, amount, and a "Match" action button for manual matching.
 
+#### Redesign in flight
+
+The Payments view is being rebuilt around the credit-card account as the
+single source of truth: any positive-amount transaction on a `credit_card`
+account counts as money flowing back to the card (payment or return). The
+matching infrastructure (`payment_match` table, auto-matcher, detect
+endpoint) is removed; checking-side CC payments are classified manually as
+transfers via the existing classification UI. The page becomes a
+charges-vs-payments side-by-side bar chart (auto-grouped to month/quarter/year
+from the global date range) plus a list of all CC-side positive
+transactions. A page-level account selector defaults to "All CCs". See
+`docs/specs/2026-05-08-04-payments-redesign.md`.
+
 ## Subscription Detection
 
 Detect two types of recurring charges:
@@ -140,13 +153,15 @@ Calendar-style view of upcoming and past recurring charges. Color-coded: green =
 
 Four tabs control how budget numbers are viewed and configured:
 
-1. **Historical Budget** — Derived entirely from past spending data. Per-category, per-month statistics: average, median, min, max, and a probability range (e.g., "80% chance grocery spending falls between $400–$600"). No user input required. This is the read-only analytical view.
+1. **Historical Budget** — Derived entirely from past spending data. Per-category, per-month statistics: average, median, min, max, and a probability range (e.g., "80% chance grocery spending falls between $400–$600"). Mostly an analytical view. A click-to-edit affordance on past-year baselines (`monthly_amount`) opens the shared budget editor in a transient panel so the user can correct mistakes that distort historical analyses. Per-month overrides and `rollover_mode` remain locked for past years.
 
 2. **Set Budget** — Forward-looking only (current month + future months). User-defined budget targets per category. The system suggests initial values from historical data, setting a baseline monthly target plus seasonal overrides for months with detected spikes. Users can accept, adjust, or clear any value. Per-month overrides are supported — e.g., bump Entertainment in December for holiday spending without changing the baseline. Past months are not editable here; their budgets are locked in as historical fact.
 
 3. **Actual vs Budget** — Backward-looking + current month. Shows what was actually spent against the budget that was in effect for that month (whether it was the baseline target, an override, or a rollover-adjusted amount). Progress bars per category per month. Summary rollup at the top. Past months are read-only records of committed budgets vs actual spending. Each category row is expandable — clicking it reveals the individual transactions that sum to the category's actual amount for that month, showing date, vendor, and amount. Transaction count is displayed next to the category name.
 
 4. **Flex Budget** — Income-minus-expenses view. Groups spending into fixed, flexible, and non-monthly buckets and shows remaining spendable amount for the month. See [Flex Budget View](#flex-budget-view) below for details.
+
+The four sub-views are URL-routed: `/budget` redirects to `/budget/actual`; the others live at `/budget/historical`, `/budget/set`, `/budget/actual`, `/budget/flex`. Refresh preserves the active sub-view. The Spending-by-category chart inside Historical renders as a stacked area chart with a persistent legend.
 
 ### Historical Analysis
 
@@ -342,6 +357,7 @@ Dark-first theme with a teal primary color. Key conventions:
 
 - **Color coding**: Green for income/positive values, red for expenses/negative values, amber for warnings and unclassified items
 - **Numeric display**: Monospace font for all currency amounts and numeric values
+- **Currency precision**: Default 0 decimals app-wide (summary cards, charts, rollups, Net Worth, Overview, Payments, Budget). The Transactions list amount column is the explicit exception — it renders 2 decimals so the user can read exact amounts.
 - **Chart palette**: 8 distinct colors for chart series (teal, blue, purple, orange, red, green, pink, cyan)
 - **Progress bars**: Green under 75%, yellow 75-100%, red over 100%
 - **Tables**: Alternating row backgrounds with hover highlight

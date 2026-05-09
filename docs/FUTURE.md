@@ -34,23 +34,7 @@ resolve to a `vendor_id`. Migration needs a backfill that groups existing
 transactions by current vendor string (post-rule) into vendor rows.
 
 
-## Payments page is useless
-
-Missing most of the payments, doesn't give a good view of credit card balance over time and payoff
-
-Side-by-side bar-chart might be most useful here? Show months, quarters, years
-
-Data quality needs to be better - lets say this: for a credit card account, the payments will be all the negative transactions. So maybe we do that first and then only use the matching transactions across credit card and checking to link them together. Does that make sense? I need to use 1 side of the payment equation, not both here because the negative transactions on the CC will be the source of truth.
-
-
-## Budgets page tweaks
-
-Spending by category would be nice with a legend always shown on it, maybe show it as a stacked line/area graph instead of stacked vertical bars
-
-Might want to be able to tweak historical budgets - some mistakes got made and now they're showing up weird, I want to be able to fix those to get accurate data and fix the app's algorithms
-
-Budget page should have routes for historical, set-budget, actual-vs-expected so that a page refresh doesn't lose your place
-
-## Currency display
-
-Generally stick with no cents shown for dollar amounts, precision should be to 0, not decimals
+_Promoted 2026-05-08:_
+- Payments page redesign → `docs/specs/2026-05-08-04-payments-redesign.md`
+- Budget tweaks (chart, historical edits, sub-nav routing) → `docs/specs/2026-05-08-05-budget-tweaks.md`
+- Currency display (0 decimals default) → `docs/specs/2026-05-08-06-currency-zero-decimal.md`
