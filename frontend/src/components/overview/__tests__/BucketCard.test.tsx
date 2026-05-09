@@ -20,7 +20,7 @@ describe("BucketCard", () => {
     // Variance is favorable here; expect "on pace" label.
     expect(screen.getByText(/on pace/i)).toBeInTheDocument();
     // The pace-mode header label is "expected".
-    expect(screen.getByText(/expected \$250\.00/i)).toBeInTheDocument();
+    expect(screen.getByText(/expected \$250/i)).toBeInTheDocument();
   });
 
   it("renders 'within budget' / 'budget' labels in actual_vs_budget mode", () => {
@@ -34,7 +34,7 @@ describe("BucketCard", () => {
     );
     expect(screen.getByText(/within budget/i)).toBeInTheDocument();
     // AvB-mode header label is "budget".
-    expect(screen.getByText(/^budget \$1,000\.00$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^budget \$1,000$/i)).toBeInTheDocument();
   });
 
   it("renders 'over budget' when actual > budget in AvB mode", () => {

@@ -139,9 +139,9 @@ describe("RecentTransactionsList", () => {
     expect(screen.getByText("Mystery Charge")).toBeInTheDocument();
 
     // Outflow gets destructive color, inflow gets success color.
-    const outflow = screen.getByText("-$42.50");
+    const outflow = screen.getByText("-$43");
     expect(outflow).toHaveClass("text-destructive");
-    const inflow = screen.getByText("$2,500.00");
+    const inflow = screen.getByText("$2,500");
     expect(inflow).toHaveClass("text-success");
 
     // Category badge text for categorized rows.

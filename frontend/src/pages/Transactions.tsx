@@ -135,7 +135,7 @@ function SimilarTransactions({
         >
           <span className="text-muted-foreground">{formatDate(s.date)}</span>
           <span className={s.amount < 0 ? "text-destructive" : "text-success"}>
-            {formatCurrency(s.amount)}
+            {formatCurrency(s.amount, 2)}
           </span>
         </div>
       ))}
@@ -540,7 +540,7 @@ export default function Transactions() {
                           t.amount < 0 ? "text-destructive" : "text-success"
                         }`}
                       >
-                        {formatCurrency(t.amount)}
+                        {formatCurrency(t.amount, 2)}
                       </td>
                       <td className="p-3" onClick={(e) => e.stopPropagation()}>
                         <Select

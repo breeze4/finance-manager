@@ -12,7 +12,7 @@ describe("PaceHeadline", () => {
           headline={{ actual_total: 100, expected_total: 250, variance: -150 }}
         />,
       );
-      expect(screen.getByText(/On pace — \$150\.00 under expected/i)).toBeInTheDocument();
+      expect(screen.getByText(/On pace — \$150 under expected/i)).toBeInTheDocument();
     });
 
     it("renders 'Over pace — $X over expected' when variance > 0", () => {
@@ -22,7 +22,7 @@ describe("PaceHeadline", () => {
           headline={{ actual_total: 400, expected_total: 250, variance: 150 }}
         />,
       );
-      expect(screen.getByText(/Over pace — \$150\.00 over expected/i)).toBeInTheDocument();
+      expect(screen.getByText(/Over pace — \$150 over expected/i)).toBeInTheDocument();
     });
 
     it("labels the expected number 'Expected'", () => {
@@ -32,7 +32,7 @@ describe("PaceHeadline", () => {
           headline={{ actual_total: 100, expected_total: 250, variance: -150 }}
         />,
       );
-      expect(screen.getByText(/Expected \$250\.00/i)).toBeInTheDocument();
+      expect(screen.getByText(/Expected \$250/i)).toBeInTheDocument();
     });
   });
 
@@ -45,7 +45,7 @@ describe("PaceHeadline", () => {
         />,
       );
       expect(
-        screen.getByText(/Spent \$200\.00 \/ Budgeted \$300\.00 \/ \$100\.00 under/i),
+        screen.getByText(/Spent \$200 \/ Budgeted \$300 \/ \$100 under/i),
       ).toBeInTheDocument();
     });
 
@@ -57,7 +57,7 @@ describe("PaceHeadline", () => {
         />,
       );
       expect(
-        screen.getByText(/Spent \$400\.00 \/ Budgeted \$300\.00 \/ Over by \$100\.00/i),
+        screen.getByText(/Spent \$400 \/ Budgeted \$300 \/ Over by \$100/i),
       ).toBeInTheDocument();
     });
 
