@@ -59,7 +59,7 @@ import {
   TrendingUp,
   X,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, NavLink, Outlet, useOutletContext } from "react-router-dom";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -69,7 +69,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import {
   deleteMonthlyOverride,
   getActualVsBudget,
@@ -1592,87 +1592,192 @@ export default function Budget() {
   const actualsRollup = actualsRollupQ.data;
   const hasBudgets = Object.keys(budgets).length > 0;
 
+  const outletContext: BudgetOutletContext = {
+    year,
+    budgets,
+    stats,
+    categories,
+    rollup,
+    actual,
+    actualsRollup,
+    actualSelectedMonth,
+    setActualSelectedMonth,
+    hasBudgets,
+    setBaseline: (categoryId, monthlyAmount, rolloverMode) =>
+      setBaselineMutation.mutate({ categoryId, monthlyAmount, rolloverMode }),
+    setOverride: (categoryId, y, month, amount) =>
+      setOverrideMutation.mutate({ categoryId, year: y, month, amount }),
+    clearOverride: (categoryId, y, month) =>
+      clearOverrideMutation.mutate({ categoryId, year: y, month }),
+    suggest: () => suggestMutation.mutate(),
+    isSuggestPending: suggestMutation.isPending,
+    suggestError: (suggestMutation.error as Error | null) ?? null,
+  };
+
   return (
-    <Tabs defaultValue="actual" className="space-y-4">
+    <div className="space-y-4">
       <div className="sticky top-0 z-20 bg-background pb-2 -mt-1 pt-1">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="historical">Historical</TabsTrigger>
-          <TabsTrigger value="set">Set Budget</TabsTrigger>
-          <TabsTrigger value="actual">Actual vs Budget</TabsTrigger>
-        </TabsList>
+        <nav
+          aria-label="Budget sub-navigation"
+          className="grid h-10 w-full grid-cols-3 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground"
+        >
+          <BudgetSubNavLink to="historical">Historical</BudgetSubNavLink>
+          <BudgetSubNavLink to="set">Set Budget</BudgetSubNavLink>
+          <BudgetSubNavLink to="actual">Actual vs Budget</BudgetSubNavLink>
+        </nav>
       </div>
 
-      <TabsContent value="historical" className="space-y-6">
-        {stats.length > 0 ? (
-          <HistoricalView stats={stats} />
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            No historical spending yet. Import some transactions to see stats.
-          </p>
-        )}
-      </TabsContent>
+      <Outlet context={outletContext} />
+    </div>
+  );
+}
 
-      <TabsContent value="set" className="space-y-6">
-        {suggestMutation.error ? (
-          <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-            Suggest failed: {(suggestMutation.error as Error).message}
-          </div>
-        ) : null}
-        {hasBudgets ? (
-          <SetBudgetView
-            year={year}
-            budgets={budgets}
-            stats={stats}
-            categories={categories}
-            rollup={rollup}
-            onSetBaseline={(categoryId, monthlyAmount, rolloverMode) =>
-              setBaselineMutation.mutate({ categoryId, monthlyAmount, rolloverMode })
-            }
-            onSetOverride={(categoryId, y, month, amount) =>
-              setOverrideMutation.mutate({ categoryId, year: y, month, amount })
-            }
-            onClearOverride={(categoryId, y, month) =>
-              clearOverrideMutation.mutate({ categoryId, year: y, month })
-            }
-            onSuggest={() => suggestMutation.mutate()}
-            isSuggestPending={suggestMutation.isPending}
-          />
-        ) : (
-          <div className="space-y-6">
-            <NetIncomeEditor />
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                No budgets set yet. Click below to seed budgets from historical averages.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => suggestMutation.mutate()}
-                disabled={suggestMutation.isPending || stats.length === 0}
-              >
-                {suggestMutation.isPending ? "Suggesting…" : "Suggest Budgets"}
-              </Button>
-            </div>
-          </div>
-        )}
-      </TabsContent>
+// ─── Sub-nav link (mirrors TabsTrigger styling) ────────────────────────────
 
-      <TabsContent value="actual" className="space-y-6">
-        {hasBudgets ? (
-          <ActualVsBudgetView
-            year={year}
-            budgets={budgets}
-            actual={actual}
-            actualsRollup={actualsRollup}
-            selectedMonth={actualSelectedMonth}
-            onSelectedMonthChange={setActualSelectedMonth}
-          />
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            Set up budgets first to see actual vs target.
-          </p>
-        )}
-      </TabsContent>
-    </Tabs>
+const SUB_NAV_BASE =
+  "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+const SUB_NAV_ACTIVE = "bg-background text-foreground shadow-sm";
+
+function BudgetSubNavLink({
+  to,
+  children,
+}: {
+  to: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) => cn(SUB_NAV_BASE, isActive && SUB_NAV_ACTIVE)}
+    >
+      {children}
+    </NavLink>
+  );
+}
+
+// ─── Outlet context + child route components ───────────────────────────────
+
+interface BudgetOutletContext {
+  year: number;
+  budgets: BudgetState;
+  stats: CategoryHistoricalStats[];
+  categories: CategoryResponse[];
+  rollup: PlanningRollup | undefined;
+  actual: ActualVsBudgetResult;
+  actualsRollup: ActualsRollup | undefined;
+  actualSelectedMonth: string;
+  setActualSelectedMonth: (m: string) => void;
+  hasBudgets: boolean;
+  setBaseline: (categoryId: number, monthlyAmount: number, rolloverMode: boolean) => void;
+  setOverride: (categoryId: number, year: number, month: number, amount: number) => void;
+  clearOverride: (categoryId: number, year: number, month: number) => void;
+  suggest: () => void;
+  isSuggestPending: boolean;
+  suggestError: Error | null;
+}
+
+function useBudgetContext(): BudgetOutletContext {
+  return useOutletContext<BudgetOutletContext>();
+}
+
+export function HistoricalTab() {
+  const { stats } = useBudgetContext();
+  return (
+    <div className="space-y-6">
+      {stats.length > 0 ? (
+        <HistoricalView stats={stats} />
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          No historical spending yet. Import some transactions to see stats.
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function SetTab() {
+  const {
+    year,
+    budgets,
+    stats,
+    categories,
+    rollup,
+    hasBudgets,
+    setBaseline,
+    setOverride,
+    clearOverride,
+    suggest,
+    isSuggestPending,
+    suggestError,
+  } = useBudgetContext();
+  return (
+    <div className="space-y-6">
+      {suggestError ? (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+          Suggest failed: {suggestError.message}
+        </div>
+      ) : null}
+      {hasBudgets ? (
+        <SetBudgetView
+          year={year}
+          budgets={budgets}
+          stats={stats}
+          categories={categories}
+          rollup={rollup}
+          onSetBaseline={setBaseline}
+          onSetOverride={setOverride}
+          onClearOverride={clearOverride}
+          onSuggest={suggest}
+          isSuggestPending={isSuggestPending}
+        />
+      ) : (
+        <div className="space-y-6">
+          <NetIncomeEditor />
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              No budgets set yet. Click below to seed budgets from historical averages.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={suggest}
+              disabled={isSuggestPending || stats.length === 0}
+            >
+              {isSuggestPending ? "Suggesting…" : "Suggest Budgets"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ActualTab() {
+  const {
+    year,
+    budgets,
+    actual,
+    actualsRollup,
+    actualSelectedMonth,
+    setActualSelectedMonth,
+    hasBudgets,
+  } = useBudgetContext();
+  return (
+    <div className="space-y-6">
+      {hasBudgets ? (
+        <ActualVsBudgetView
+          year={year}
+          budgets={budgets}
+          actual={actual}
+          actualsRollup={actualsRollup}
+          selectedMonth={actualSelectedMonth}
+          onSelectedMonthChange={setActualSelectedMonth}
+        />
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Set up budgets first to see actual vs target.
+        </p>
+      )}
+    </div>
   );
 }
