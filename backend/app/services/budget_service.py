@@ -222,6 +222,8 @@ def set_budget(
     rollover_mode: bool = False,
 ) -> Budget:
     """Create or update a budget baseline for a category/year."""
+    if db.query(Category.id).filter(Category.id == category_id).first() is None:
+        raise ValueError(f"category_id {category_id} does not exist")
     budget = db.query(Budget).filter(Budget.category_id == category_id, Budget.year == year).first()
     if budget is None:
         budget = Budget(

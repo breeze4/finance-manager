@@ -75,13 +75,16 @@ def set_budget(
     body: BudgetSetRequest,
     db: Session = Depends(get_db),
 ):
-    budget = budget_service.set_budget(
-        db,
-        category_id=category_id,
-        year=year,
-        monthly_amount=body.monthly_amount,
-        rollover_mode=body.rollover_mode,
-    )
+    try:
+        budget = budget_service.set_budget(
+            db,
+            category_id=category_id,
+            year=year,
+            monthly_amount=body.monthly_amount,
+            rollover_mode=body.rollover_mode,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     # Re-fetch with relationships loaded.
     budgets = budget_service.list_budgets(db, year=year)
     found = [b for b in budgets if b.id == budget.id]

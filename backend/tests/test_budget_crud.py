@@ -1,5 +1,6 @@
 from datetime import date
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -89,6 +90,16 @@ class TestBudgetCRUD:
         b2 = set_budget(db, category_id=gid, year=2026, monthly_amount=600.0)
         assert b1.id == b2.id
         assert b2.monthly_amount == 600.0
+
+    def test_set_budget_rejects_unknown_category(self, db: Session):
+        # The historical-analysis endpoint coalesces NULL category_id to 0 for display.
+        # Ensure that synthetic id can't round-trip into a real (orphan) budget row.
+        _seed_categories(db)
+        with pytest.raises(ValueError, match="category_id 0"):
+            set_budget(db, category_id=0, year=2026, monthly_amount=500.0)
+        with pytest.raises(ValueError, match="category_id 9999"):
+            set_budget(db, category_id=9999, year=2026, monthly_amount=500.0)
+        assert db.query(Budget).count() == 0
 
     def test_set_budget_with_rollover(self, db: Session):
         cats = _seed_categories(db)
