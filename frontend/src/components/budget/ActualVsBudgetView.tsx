@@ -75,6 +75,7 @@ export function ActualVsBudgetView({
   const rowsByBucket = groupRowsByBucket(rowsWithBucket);
   const monthAnnotations = buildMonthAnnotations(availableMonths, actual.monthlyRollups);
   const bucketSections = buildBucketSections(rowsByBucket, actualsRollup);
+  const selectedMonthRollup = actual.monthlyRollups.find((r) => r.month === selectedMonthInt);
 
   const isCurrentMonth = selectedMonth === currentMonthKey;
 
@@ -93,6 +94,43 @@ export function ActualVsBudgetView({
         <p className="text-xs text-muted-foreground">
           Partial data for the current month ({monthLabel(currentMonthKey)}).
         </p>
+      )}
+
+      {selectedMonthRollup && (
+        <Card>
+          <CardContent className="grid gap-4 pt-5 sm:grid-cols-3">
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                {monthLabel(selectedMonth)} Budget
+              </div>
+              <div className="mt-1 font-mono text-2xl font-semibold">
+                {formatCurrency(selectedMonthRollup.totalBudgeted)}
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Spent So Far
+              </div>
+              <div className="mt-1 font-mono text-2xl font-semibold">
+                {formatCurrency(selectedMonthRollup.totalActual)}
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Remaining
+              </div>
+              <div
+                className={`mt-1 font-mono text-2xl font-semibold ${
+                  selectedMonthRollup.difference >= 0 ? "text-success" : "text-red-300/80"
+                }`}
+              >
+                {selectedMonthRollup.difference >= 0
+                  ? formatCurrency(selectedMonthRollup.difference)
+                  : `-${formatCurrency(Math.abs(selectedMonthRollup.difference))}`}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Four-bucket actuals rollup card row. Falls back to a hint when
