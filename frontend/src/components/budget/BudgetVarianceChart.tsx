@@ -9,13 +9,14 @@
  * (`getTierColors`) live here as non-exported helpers — they exist for
  * this component only.
  */
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, ChevronRight, RefreshCw } from "lucide-react";
 
 import { formatCurrency } from "@/lib/format";
 
 import { CategoryDrilldown } from "./CategoryDrilldown";
 import type { VarianceRow } from "./actualVsBudgetViewModel";
+import { currentMonthKey, today } from "./date-helpers";
 
 type SortColumn = "budget" | "actual" | "pct" | "remaining";
 type SortDir = "asc" | "desc";
@@ -32,35 +33,69 @@ function mapToZonePosition(budgetPct: number): number {
 function getTierColors(pct: number) {
   if (pct < 85)
     return {
-      solid: "hsl(173, 40%, 22%)",
-      stripe: "hsla(173, 40%, 22%, 0.08)",
-      border: "hsla(173, 40%, 22%, 0.2)",
+      solid: "hsl(173, 32%, 20%)",
+      stripe: "hsla(173, 32%, 24%, 0.08)",
+      border: "hsla(173, 32%, 30%, 0.18)",
       text: "rgba(255,255,255,0.9)",
     };
   if (pct <= 115)
     return {
-      solid: "hsl(45, 90%, 32%)",
-      stripe: "hsla(45, 90%, 32%, 0.1)",
-      border: "hsla(45, 90%, 32%, 0.25)",
-      text: "hsl(35, 60%, 85%)",
+      solid: "hsl(39, 48%, 25%)",
+      stripe: "hsla(39, 48%, 30%, 0.10)",
+      border: "hsla(39, 48%, 34%, 0.22)",
+      text: "hsl(39, 35%, 82%)",
     };
   return {
-    solid: "hsl(0, 60%, 32%)",
-    stripe: "hsla(0, 60%, 32%, 0.08)",
-    border: "hsla(0, 60%, 32%, 0.2)",
+    solid: "hsl(358, 42%, 25%)",
+    stripe: "hsla(358, 42%, 30%, 0.09)",
+    border: "hsla(358, 42%, 34%, 0.20)",
     text: "rgba(255,255,255,0.9)",
+  };
+}
+
+function getCurrentMonthPace(row: VarianceRow, monthKeyStr: string) {
+  if (monthKeyStr !== currentMonthKey || row.budget <= 0) return null;
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const expectedToDate = row.budget * (today.getDate() / daysInMonth);
+  const pacePct = expectedToDate > 0 ? (row.actual / expectedToDate) * 100 : 0;
+  return {
+    expectedToDate,
+    pacePct,
+    budgetPctToDate: (today.getDate() / daysInMonth) * 100,
+    aheadOfPace: row.actual > expectedToDate,
   };
 }
 
 interface BudgetVarianceChartProps {
   rows: VarianceRow[];
   monthKeyStr: string;
+  expandedCategoryId?: number | null;
 }
 
-export function BudgetVarianceChart({ rows, monthKeyStr }: BudgetVarianceChartProps) {
+export function BudgetVarianceChart({
+  rows,
+  monthKeyStr,
+  expandedCategoryId,
+}: BudgetVarianceChartProps) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [sortCol, setSortCol] = useState<SortColumn>("budget");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  useEffect(() => {
+    if (expandedCategoryId == null) return;
+    if (!rows.some((r) => r.categoryId === expandedCategoryId)) return;
+    setExpanded((prev) => {
+      if (prev.has(expandedCategoryId)) return prev;
+      const next = new Set(prev);
+      next.add(expandedCategoryId);
+      return next;
+    });
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(`budget-category-${expandedCategoryId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, [expandedCategoryId, rows]);
 
   const handleSort = (col: SortColumn) => {
     if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -154,12 +189,20 @@ export function BudgetVarianceChart({ rows, monthKeyStr }: BudgetVarianceChartPr
       {sorted.map((r) => {
         const pct = r.pct;
         const isOver = r.actual > r.budget;
-        const tier = getTierColors(pct);
+        const pace = getCurrentMonthPace(r, monthKeyStr);
+        const paceStatusPct = pace ? pace.pacePct : pct;
+        const tier = getTierColors(isOver ? 116 : paceStatusPct);
+        const rowStatusClass = isOver
+          ? "text-red-300/80"
+          : pace?.aheadOfPace
+            ? "text-amber-300/80"
+            : "text-muted-foreground";
         const isOpen = expanded.has(r.categoryId);
 
         return (
           <Fragment key={r.categoryId}>
             <div
+              id={`budget-category-${r.categoryId}`}
               className="flex items-center h-9 cursor-pointer hover:bg-secondary/20 rounded transition-colors"
               onClick={() => toggleExpanded(r.categoryId)}
             >
@@ -168,7 +211,7 @@ export function BudgetVarianceChart({ rows, monthKeyStr }: BudgetVarianceChartPr
                   className={`w-3 h-3 text-muted-foreground/50 transition-transform ${isOpen ? "rotate-90" : ""}`}
                 />
               </div>
-              <div className="w-28 shrink-0 text-xs text-muted-foreground truncate flex items-center gap-1">
+              <div className={`w-28 shrink-0 text-xs truncate flex items-center gap-1 ${rowStatusClass}`}>
                 {r.category}
                 {r.rollover && <RefreshCw className="w-3 h-3 text-primary shrink-0" />}
               </div>
@@ -186,7 +229,7 @@ export function BudgetVarianceChart({ rows, monthKeyStr }: BudgetVarianceChartPr
                 )}
               </div>
               <div className="w-20 shrink-0 text-right">
-                <span className="text-[10px] font-mono whitespace-nowrap">
+                <span className={`text-[10px] font-mono whitespace-nowrap ${rowStatusClass}`}>
                   {formatCurrency(r.actual)}
                 </span>
               </div>
@@ -201,9 +244,9 @@ export function BudgetVarianceChart({ rows, monthKeyStr }: BudgetVarianceChartPr
               </div>
               <div className="flex-1 h-5 relative">
                 <div className="absolute inset-0 flex">
-                  <div style={{ width: "70%", backgroundColor: "hsla(173, 40%, 35%, 0.14)" }} />
-                  <div style={{ width: "20%", backgroundColor: "hsla(45, 90%, 50%, 0.10)" }} />
-                  <div style={{ width: "10%", backgroundColor: "hsla(0, 60%, 50%, 0.10)" }} />
+                  <div style={{ width: "70%", backgroundColor: "hsla(173, 32%, 30%, 0.10)" }} />
+                  <div style={{ width: "20%", backgroundColor: "hsla(39, 48%, 36%, 0.08)" }} />
+                  <div style={{ width: "10%", backgroundColor: "hsla(358, 42%, 36%, 0.08)" }} />
                 </div>
                 <div
                   className="absolute top-0 bottom-0"
@@ -220,6 +263,17 @@ export function BudgetVarianceChart({ rows, monthKeyStr }: BudgetVarianceChartPr
                     borderLeft: "1px dashed hsla(0, 0%, 100%, 0.15)",
                   }}
                 />
+                {pace && (
+                  <div
+                    className="absolute top-0 bottom-0 z-20"
+                    title={`Today's pace: ${formatCurrency(pace.expectedToDate)}`}
+                    style={{
+                      left: `${mapToZonePosition(pace.budgetPctToDate)}%`,
+                      borderLeft: "1px solid hsla(0, 0%, 100%, 0.35)",
+                      boxShadow: "0 0 0 1px hsla(0, 0%, 0%, 0.25)",
+                    }}
+                  />
+                )}
                 {!isOver && pct < 100 && (() => {
                   const mappedFill = mapToZonePosition(pct);
                   const mappedBudget = mapToZonePosition(100);

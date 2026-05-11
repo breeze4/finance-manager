@@ -39,6 +39,7 @@ interface BucketCardProps {
   bucket: BucketPaceRollup;
   expanded: boolean;
   onToggle: () => void;
+  onCategoryClick?: (categoryId: number) => void;
   mode: PaceMode;
 }
 
@@ -99,10 +100,24 @@ function ProgressFill({ actual, budget }: { actual: number; budget: number }) {
   );
 }
 
-function CategoryPaceModeRow({ row }: { row: CategoryPaceRow }) {
+function CategoryPaceModeRow({
+  row,
+  onCategoryClick,
+}: {
+  row: CategoryPaceRow;
+  onCategoryClick?: (categoryId: number) => void;
+}) {
   const overPace = row.actual_mtd > row.expected_mtd;
+  const canDrillDown = row.category_id != null && onCategoryClick != null;
   return (
-    <div className="space-y-1.5 py-2 border-t border-border first:border-t-0">
+    <div
+      className={`space-y-1.5 py-2 border-t border-border first:border-t-0 rounded-sm ${
+        canDrillDown ? "cursor-pointer hover:bg-secondary/20 px-1 -mx-1" : ""
+      }`}
+      onClick={() => {
+        if (row.category_id != null) onCategoryClick?.(row.category_id);
+      }}
+    >
       <div className="flex items-baseline justify-between gap-2 text-sm">
         <span className="font-medium">{row.category_name}</span>
         <span className="font-mono text-xs text-muted-foreground">
@@ -124,12 +139,26 @@ function CategoryPaceModeRow({ row }: { row: CategoryPaceRow }) {
   );
 }
 
-function CategoryAvbModeRow({ row }: { row: CategoryPaceRow }) {
+function CategoryAvbModeRow({
+  row,
+  onCategoryClick,
+}: {
+  row: CategoryPaceRow;
+  onCategoryClick?: (categoryId: number) => void;
+}) {
   // In AvB mode `expected_mtd` and `full_budget` carry the same value
   // (range_budget). We display "Actual / Budget" copy.
   const over = row.actual_mtd > row.full_budget && row.full_budget > 0;
+  const canDrillDown = row.category_id != null && onCategoryClick != null;
   return (
-    <div className="space-y-1.5 py-2 border-t border-border first:border-t-0">
+    <div
+      className={`space-y-1.5 py-2 border-t border-border first:border-t-0 rounded-sm ${
+        canDrillDown ? "cursor-pointer hover:bg-secondary/20 px-1 -mx-1" : ""
+      }`}
+      onClick={() => {
+        if (row.category_id != null) onCategoryClick?.(row.category_id);
+      }}
+    >
       <div className="flex items-baseline justify-between gap-2 text-sm">
         <span className="font-medium">{row.category_name}</span>
         <span className="font-mono text-xs text-muted-foreground">
@@ -146,11 +175,29 @@ function CategoryAvbModeRow({ row }: { row: CategoryPaceRow }) {
   );
 }
 
-function CategoryRow({ row, mode }: { row: CategoryPaceRow; mode: PaceMode }) {
-  return mode === "pace" ? <CategoryPaceModeRow row={row} /> : <CategoryAvbModeRow row={row} />;
+function CategoryRow({
+  row,
+  mode,
+  onCategoryClick,
+}: {
+  row: CategoryPaceRow;
+  mode: PaceMode;
+  onCategoryClick?: (categoryId: number) => void;
+}) {
+  return mode === "pace" ? (
+    <CategoryPaceModeRow row={row} onCategoryClick={onCategoryClick} />
+  ) : (
+    <CategoryAvbModeRow row={row} onCategoryClick={onCategoryClick} />
+  );
 }
 
-export function BucketCard({ bucket, expanded, onToggle, mode }: BucketCardProps) {
+export function BucketCard({
+  bucket,
+  expanded,
+  onToggle,
+  onCategoryClick,
+  mode,
+}: BucketCardProps) {
   const isEmpty = bucket.categories.length === 0 && bucket.budget === 0;
   const overPace = mode === "pace" ? bucket.actual > bucket.expected : bucket.actual > bucket.budget;
   const statusLabel = mode === "pace"
@@ -222,6 +269,7 @@ export function BucketCard({ bucket, expanded, onToggle, mode }: BucketCardProps
                     key={c.category_id ?? c.category_name}
                     row={c}
                     mode={mode}
+                    onCategoryClick={onCategoryClick}
                   />
                 ))}
               </div>

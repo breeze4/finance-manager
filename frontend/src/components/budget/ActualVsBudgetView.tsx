@@ -50,6 +50,7 @@ interface ActualVsBudgetViewProps {
   actualsRollup: ActualsRollup | undefined;
   selectedMonth: string;
   onSelectedMonthChange: (m: string) => void;
+  expandedCategoryId?: number | null;
 }
 
 export function ActualVsBudgetView({
@@ -59,6 +60,7 @@ export function ActualVsBudgetView({
   actualsRollup,
   selectedMonth,
   onSelectedMonthChange,
+  expandedCategoryId,
 }: ActualVsBudgetViewProps) {
   const availableMonths = pastAndCurrentMonthsForYear(year);
   const selectedMonthInt = parseInt(selectedMonth.split("-")[1], 10);
@@ -126,7 +128,11 @@ export function ActualVsBudgetView({
             </div>
           </CardHeader>
           <CardContent>
-            <BudgetVarianceChart rows={bucketRows} monthKeyStr={selectedMonth} />
+            <BudgetVarianceChart
+              rows={bucketRows}
+              monthKeyStr={selectedMonth}
+              expandedCategoryId={expandedCategoryId}
+            />
           </CardContent>
         </Card>
       ))}
@@ -144,6 +150,7 @@ export function ActualVsBudgetView({
             <BudgetVarianceChart
               rows={rowsByBucket.other}
               monthKeyStr={selectedMonth}
+              expandedCategoryId={expandedCategoryId}
             />
           </CardContent>
         </Card>

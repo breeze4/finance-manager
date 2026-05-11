@@ -21,9 +21,9 @@
  * charts under bucket headers. The rollup data comes from
  * `/api/csp/rollup?mode=actuals&month=YYYY-MM`.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { NavLink, Outlet, useOutletContext } from "react-router-dom";
+import { NavLink, Outlet, useOutletContext, useSearchParams } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -64,7 +64,14 @@ import { SetBudgetView } from "@/components/budget/SetBudgetView";
 
 export default function Budget() {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const year = currentYear;
+  const requestedMonth = searchParams.get("month");
+  const requestedCategory = searchParams.get("category");
+  const requestedCategoryId = requestedCategory == null ? NaN : Number(requestedCategory);
+  const drilldownCategoryId = Number.isFinite(requestedCategoryId)
+    ? requestedCategoryId
+    : null;
 
   // Selected month for the Actual vs Budget tab. Hoisted up to the page so
   // the actuals-rollup query can refetch when the user picks a different
@@ -72,10 +79,18 @@ export default function Budget() {
   // the chosen year.
   const availableMonthsForYear = pastAndCurrentMonthsForYear(year);
   const initialActualMonth =
-    year === currentYear
+    requestedMonth && /^\d{4}-\d{2}$/.test(requestedMonth)
+      ? requestedMonth
+      : year === currentYear
       ? currentMonthKey
       : availableMonthsForYear[availableMonthsForYear.length - 1] ?? monthKey(year, 12);
   const [actualSelectedMonth, setActualSelectedMonth] = useState<string>(initialActualMonth);
+
+  useEffect(() => {
+    if (requestedMonth && /^\d{4}-\d{2}$/.test(requestedMonth)) {
+      setActualSelectedMonth(requestedMonth);
+    }
+  }, [requestedMonth]);
 
   const budgetsQ = useQuery<BudgetState>({
     queryKey: ["budget", { year }],
@@ -227,6 +242,7 @@ export default function Budget() {
     actualsRollup,
     actualSelectedMonth,
     setActualSelectedMonth,
+    drilldownCategoryId,
     hasBudgets,
     setBaseline: (categoryId, monthlyAmount, rolloverMode) =>
       setBaselineMutation.mutate({ categoryId, monthlyAmount, rolloverMode }),
@@ -299,6 +315,7 @@ interface BudgetOutletContext {
   actualsRollup: ActualsRollup | undefined;
   actualSelectedMonth: string;
   setActualSelectedMonth: (m: string) => void;
+  drilldownCategoryId: number | null;
   hasBudgets: boolean;
   setBaseline: (categoryId: number, monthlyAmount: number, rolloverMode: boolean) => void;
   /** Year-aware baseline write for past-year edits invoked from HistoricalView. */
@@ -397,6 +414,7 @@ export function ActualTab() {
     actualsRollup,
     actualSelectedMonth,
     setActualSelectedMonth,
+    drilldownCategoryId,
     hasBudgets,
   } = useBudgetContext();
   return (
@@ -409,6 +427,7 @@ export function ActualTab() {
           actualsRollup={actualsRollup}
           selectedMonth={actualSelectedMonth}
           onSelectedMonthChange={setActualSelectedMonth}
+          expandedCategoryId={drilldownCategoryId}
         />
       ) : (
         <p className="text-sm text-muted-foreground">

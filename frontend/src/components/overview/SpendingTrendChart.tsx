@@ -1,5 +1,5 @@
 /**
- * SpendingTrendChart — two-series per-month "actual vs expected" trend.
+ * SpendingTrendChart — per-month "actual vs budget vs variance" trend.
  *
  * Dumb presentation component: parent owns the query (Overview.tsx) and
  * passes ``data`` + ``loading`` in. Mirrors NetWorthChart.tsx in chart
@@ -8,7 +8,9 @@
  *
  * Colors:
  *   - actual  → ``hsl(var(--chart-1))`` (analyzer teal — primary)
- *   - expected → ``hsl(var(--chart-2))`` (muted blue — comparison)
+ *   - budget → ``hsl(var(--chart-2))`` (muted blue — comparison)
+ *   - variance → success/destructive/muted per month, depending on
+ *     whether actual is under/over/equal to budget.
  *
  * Empty state ("No data for this range") and loading state ("Loading
  * chart…") match the convention from NetWorthChart.tsx — same 320px
@@ -19,7 +21,9 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Legend,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -32,6 +36,7 @@ import type { TrendMonth } from "@/api/overview";
 export interface SpendingTrendChartProps {
   data: TrendMonth[];
   loading: boolean;
+  currentMonth?: string;
 }
 
 const CURRENCY_COMPACT = new Intl.NumberFormat("en-US", {
@@ -54,7 +59,36 @@ function formatMonthLabel(yyyymm: string): string {
   return d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
 }
 
-export function SpendingTrendChart({ data, loading }: SpendingTrendChartProps) {
+function formatTrendMonthLabel(yyyymm: string, currentMonth?: string): string {
+  const label = formatMonthLabel(yyyymm);
+  return currentMonth === yyyymm ? `${label} MTD` : label;
+}
+
+type TrendChartRow = TrendMonth & {
+  variance: number;
+  varianceLabel: "Under Budget" | "Over Budget" | "On Budget";
+  varianceFill: string;
+};
+
+function toChartRows(data: TrendMonth[]): TrendChartRow[] {
+  return data.map((row) => {
+    const delta = row.expected - row.actual;
+    const isUnder = delta > 0;
+    const isOver = delta < 0;
+    return {
+      ...row,
+      variance: delta,
+      varianceLabel: isOver ? "Over Budget" : isUnder ? "Under Budget" : "On Budget",
+      varianceFill: isOver
+        ? "hsl(var(--destructive))"
+        : isUnder
+          ? "hsl(var(--success))"
+          : "hsl(var(--muted-foreground))",
+    };
+  });
+}
+
+export function SpendingTrendChart({ data, loading, currentMonth }: SpendingTrendChartProps) {
   if (loading) {
     return (
       <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">
@@ -71,21 +105,32 @@ export function SpendingTrendChart({ data, loading }: SpendingTrendChartProps) {
     );
   }
 
+  const chartData = toChartRows(data);
+
   return (
     <ResponsiveContainer width="100%" height={320}>
-      <BarChart data={data} margin={{ top: 8, right: 24, bottom: 8, left: 8 }}>
+      <BarChart data={chartData} margin={{ top: 8, right: 24, bottom: 8, left: 8 }}>
         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
         <XAxis
           dataKey="month"
-          tickFormatter={formatMonthLabel}
+          tickFormatter={(value: string) => formatTrendMonthLabel(value, currentMonth)}
           className="text-xs"
           minTickGap={16}
         />
         <YAxis tickFormatter={formatYAxis} className="text-xs" width={80} />
         <Tooltip
-          formatter={(value: number) => formatCurrency(value)}
-          labelFormatter={(label: string) => formatMonthLabel(label)}
+          formatter={(value: number, name: string, item) => {
+            if (name === "Variance") {
+              return [
+                formatCurrency(Math.abs(value)),
+                (item.payload as TrendChartRow).varianceLabel,
+              ];
+            }
+            return [formatCurrency(value), name];
+          }}
+          labelFormatter={(label: string) => formatTrendMonthLabel(label, currentMonth)}
         />
+        <ReferenceLine y={0} stroke="hsl(var(--border))" />
         <Legend />
         <Bar
           dataKey="actual"
@@ -95,10 +140,15 @@ export function SpendingTrendChart({ data, loading }: SpendingTrendChartProps) {
         />
         <Bar
           dataKey="expected"
-          name="Expected"
+          name="Budget"
           fill="hsl(var(--chart-2))"
           isAnimationActive={false}
         />
+        <Bar dataKey="variance" name="Variance" isAnimationActive={false}>
+          {chartData.map((row) => (
+            <Cell key={`variance-${row.month}`} fill={row.varianceFill} />
+          ))}
+        </Bar>
       </BarChart>
     </ResponsiveContainer>
   );
